@@ -1,0 +1,79 @@
+version: "3.8"
+
+services:
+  # =======================================================
+  # Databricks Steward Agent (Backend REST / OpenAI API)
+  # =======================================================
+  databricks-steward:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: databricks-steward-agent
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Databricks connection
+      - DATABRICKS_HOST=${DATABRICKS_HOST:-}
+      - DATABRICKS_TOKEN=${DATABRICKS_TOKEN:-}
+      - DATABRICKS_WAREHOUSE_ID=${DATABRICKS_WAREHOUSE_ID:-}
+      - DATABRICKS_DEFAULT_CATALOG=${DATABRICKS_DEFAULT_CATALOG:-main}
+      - DATABRICKS_DEFAULT_SCHEMA=${DATABRICKS_DEFAULT_SCHEMA:-default}
+      # Local LLM connection (pointing to host Ollama or containerized Ollama)
+      - LOCAL_LLM_BASE_URL=${LOCAL_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-qwen2.5-coder:7b}
+      - LOCAL_LLM_API_KEY=${LOCAL_LLM_API_KEY:-ollama}
+      - LOCAL_LLM_TEMPERATURE=${LOCAL_LLM_TEMPERATURE:-0.1}
+      # GitHub GitOps
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:-}
+      - GITHUB_BASE_BRANCH=${GITHUB_BASE_BRANCH:-main}
+      # Semantic layer configs
+      - SEMANTIC_MODELS_PATH=/app/configs/semantic_models
+    volumes:
+      # Live reload semantic models without rebuild
+      - ./configs/semantic_models:/app/configs/semantic_models:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "host.containers.internal:host-gateway"
+
+  # =======================================================
+  # Open WebUI (Interface de Chat e Visualização Mermaid)
+  # =======================================================
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: databricks-steward-webui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    environment:
+      - OPENAI_API_BASE_URL=http://databricks-steward:8000/v1
+      - OPENAI_API_KEY=steward-local-key
+      - WEBUI_AUTH=false
+      - ENABLE_OLLAMA_API=true
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    volumes:
+      - open-webui-data:/app/backend/data
+    depends_on:
+      - databricks-steward
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "host.containers.internal:host-gateway"
+
+  # =======================================================
+  # Ollama Local (Opcional - ative com --profile with-ollama)
+  # =======================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: databricks-steward-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    profiles:
+      - with-ollama
+
+volumes:
+  open-webui-data:
+  ollama-models:

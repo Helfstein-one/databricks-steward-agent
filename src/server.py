@@ -1,0 +1,202 @@
+"""FastAPI OpenAI-compatible REST server for Databricks Steward Agent."""
+
+from __future__ import annotations
+
+import time
+import uuid
+from typing import Any
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+
+from src.agent.graph import create_steward_graph, get_local_chat_client
+from src.ci.runner import run_ci_pipeline
+from src.config import settings
+from src.semantic.compiler import SemanticQueryCompiler
+from src.semantic.registry import SemanticRegistry
+
+app = FastAPI(
+    title="Databricks Steward Agent API",
+    description="GenAI Data Steward & Semantic Engine for Databricks and Open WebUI",
+    version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatCompletionRequest(BaseModel):
+    model: str | None = "databricks-steward"
+    messages: list[ChatMessage]
+    temperature: float | None = 0.1
+    stream: bool | None = False
+
+
+class ChatCompletionResponseChoice(BaseModel):
+    index: int
+    message: ChatMessage
+    finish_reason: str = "stop"
+
+
+class ChatCompletionResponse(BaseModel):
+    id: str
+    object: str = "chat.completion"
+    created: int
+    model: str
+    choices: list[ChatCompletionResponseChoice]
+
+
+class SemanticCompileRequest(BaseModel):
+    entity_name: str
+    metric_names: list[str] = Field(default_factory=list)
+    group_by_dims: list[str] = Field(default_factory=list)
+    filters: list[str] = Field(default_factory=list)
+    limit: int | None = 50
+
+
+class CiValidateRequest(BaseModel):
+    pyspark_code: str | None = None
+    sparksql_code: str | None = None
+
+
+@app.get("/health")
+def health_check() -> dict[str, Any]:
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "service": "databricks-steward-agent",
+        "version": "0.1.0",
+        "databricks_host": settings.databricks_host or "mock_mode",
+        "local_llm_url": settings.local_llm_base_url,
+    }
+
+
+@app.get("/v1/models")
+def list_models() -> dict[str, Any]:
+    """List models supported by the service (OpenAI compatible)."""
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": "databricks-steward",
+                "object": "model",
+                "created": 1700000000,
+                "owned_by": "databricks-steward",
+            }
+        ],
+    }
+
+
+@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+def chat_completions(request: ChatCompletionRequest) -> ChatCompletionResponse:
+    """Process OpenAI-compatible chat completion request using LangGraph."""
+    try:
+        llm = get_local_chat_client(
+            base_url=settings.local_llm_base_url,
+            model=settings.local_llm_model,
+            api_key=settings.local_llm_api_key,
+            temperature=request.temperature or settings.local_llm_temperature,
+        )
+        graph = create_steward_graph(llm=llm)
+
+        # Get last user prompt
+        prompt = ""
+        for m in reversed(request.messages):
+            if m.role == "user":
+                prompt = m.content
+                break
+
+        if not prompt:
+            prompt = "Olá! Como posso ajudar na governança ou engenharia de dados do Databricks?"
+
+        result = graph.invoke({"messages": [{"role": "user", "content": prompt}]})
+        messages = result.get("messages", [])
+        
+        reply_text = ""
+        for m in reversed(messages):
+            if hasattr(m, "content") and m.content and getattr(m, "type", "") in ("ai", "AIMessage"):
+                reply_text = str(m.content)
+                break
+            elif isinstance(m, dict) and m.get("role") == "assistant":
+                reply_text = str(m.get("content", ""))
+                break
+
+        if not reply_text:
+            reply_text = "Solicitação processada pelo Databricks Steward Agent."
+
+        return ChatCompletionResponse(
+            id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            created=int(time.time()),
+            model=request.model or "databricks-steward",
+            choices=[
+                ChatCompletionResponseChoice(
+                    index=0,
+                    message=ChatMessage(role="assistant", content=reply_text),
+                    finish_reason="stop",
+                )
+            ],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get("/api/semantic/models")
+def get_semantic_models() -> dict[str, Any]:
+    """Retrieve all loaded semantic domains and entities."""
+    registry = SemanticRegistry(settings.semantic_models_path)
+    domains = [d.name for d in registry.domains.values()]
+    entities = [e.name for e in registry.entities.values()]
+    return {"domains": domains, "entities": entities}
+
+
+@app.post("/api/semantic/compile")
+def compile_semantic_query(req: SemanticCompileRequest) -> dict[str, Any]:
+    """Compile semantic terms to SparkSQL."""
+    registry = SemanticRegistry(settings.semantic_models_path)
+    compiler = SemanticQueryCompiler(registry)
+    sql = compiler.compile_query(
+        entity_name=req.entity_name,
+        metric_names=req.metric_names,
+        group_by_dims=req.group_by_dims,
+        filters=req.filters,
+        limit=req.limit,
+    )
+    return {"sql": sql}
+
+
+@app.post("/api/ci/validate")
+def validate_code_ci(req: CiValidateRequest) -> dict[str, Any]:
+    """Run data engineering CI quality gate on PySpark / SparkSQL."""
+    report = run_ci_pipeline(
+        pyspark_code=req.pyspark_code,
+        sparksql_code=req.sparksql_code,
+    )
+    return {
+        "is_approved": report.is_approved,
+        "summary": report.summary_markdown,
+        "results": [
+            {
+                "step": r.step_name,
+                "passed": r.passed,
+                "message": r.message,
+                "errors": r.errors,
+            }
+            for r in report.results
+        ],
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

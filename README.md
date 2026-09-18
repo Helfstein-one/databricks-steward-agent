@@ -4,141 +4,261 @@
 [![Databricks SDK](https://img.shields.io/badge/Databricks-SDK%200.28+-orange.svg)](https://docs.databricks.com/en/dev-tools/sdk-python.html)
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.2+-purple.svg)](https://github.com/langchain-ai/langgraph)
 [![Open WebUI](https://img.shields.io/badge/Open%20WebUI-Compatible-green.svg)](https://openwebui.com/)
+[![Docker & Podman](https://img.shields.io/badge/Containers-Docker%20%7C%20Podman-blue.svg)](https://podman.io/)
 
-**Databricks Steward Agent** is an end-to-end GenAI data stewardship, semantic modeling, PySpark ETL engineering, and GitOps automation solution designed for **Open WebUI** and local LLM runners (Ollama / vLLM via OpenAI-compatible endpoints) with **LangGraph** orchestration.
-
----
-
-## 🏛️ Architectural Overview
-
-```
-                          ┌────────────────────────────┐
-                          │   Open WebUI Chat UI       │
-                          │   (open_webui_pipe.py)     │
-                          └─────────────┬──────────────┘
-                                        │
-                                        ▼
-                          ┌────────────────────────────┐
-                          │     LangGraph Agent        │
-                          │     (src/agent/graph.py)   │
-                          └─────────────┬──────────────┘
-                                        │
-        ┌───────────────────┬───────────┴───────────┬───────────────────┐
-        ▼                   ▼                       ▼                   ▼
-┌──────────────┐    ┌──────────────┐        ┌──────────────┐    ┌──────────────┐
-│  Databricks  │    │   Semantic   │        │   Mermaid    │    │  Medallion   │
-│Unity Catalog │    │ Declarative  │        │ Visualizer   │    │ETL Generator │
-│ (Introspect) │    │  (Registry)  │        │ (ERD/Lineage)│    │(Bronze/Silver│
-└──────────────┘    └───────┬──────┘        └──────────────┘    │    /Gold)    │
-                            │                                   └───────┬──────┘
-                            ▼                                           │
-                    ┌──────────────┐                                    ▼
-                    │ SparkSQL     │                            ┌──────────────┐
-                    │ Compiler     │                            │CI Quality    │
-                    │(NULLIF Safety│                            │Gate (Ruff,   │
-                    └──────────────┘                            │SQLFluff,Anti)│
-                                                                └───────┬──────┘
-                                                                        │
-                                                                        ▼
-                                                                ┌──────────────┐
-                                                                │Automated     │
-                                                                │GitOps Engine │
-                                                                │(GitHub PR)   │
-                                                                └──────────────┘
-```
+**Databricks Steward Agent** é uma solução completa de governança, modelagem semântica, engenharia de dados Lakehouse e automação GitOps orientada a GenAI. Projetado para integrar perfeitamente com **Open WebUI** e modelos de linguagem locais (**Ollama / vLLM**) através de orquestração com **LangGraph**, o agente se conecta ao Databricks (Unity Catalog & SQL Warehouse), gera diagramas Mermaid interativos, desenha produtos de dados, gera pipelines modulares em PySpark/SparkSQL, valida o código em uma esteira de CI de boas práticas de dados e abre Pull Requests automaticamente no GitHub.
 
 ---
 
-## 🚀 Key Capabilities
+## 🏛️ Diagramas de Solução e Arquitetura
 
-1. **Open WebUI Pipe & Local LLMs**: Standalone `open_webui_pipe.py` script featuring configurable administrative `Valves` connecting to local models (Ollama, vLLM) or OpenAI endpoints.
-2. **Databricks Unity Catalog Introspection**: Inspects catalogs, schemas, tables, and constraints via Databricks SDK (`WorkspaceClient`), featuring an automatic offline demo mock fallback mode.
-3. **Declarative Semantic Modeling**: Pydantic v2 schemas defining business domains, entities, dimensions, metrics, and relationships with YAML ontologies in `configs/semantic_models/`.
-4. **Graph Join Resolver & Safe SparkSQL Compiler**: Shortest-path join resolution using BFS on entity relationship graphs, compiling analytical queries with automatic `NULLIF(..., 0)` division-by-zero protection.
-5. **Interactive Mermaid.js Visualizations**: Native generation of strict Crow's foot `erDiagram` models and Medallion layer lineage flowcharts (`graph LR`) directly renderable in chat interfaces.
-6. **Modular Medallion ETL Generation**: Generates production-ready, explicitly typed PySpark and SparkSQL modules across Bronze (raw ingestion), Silver (deduplication & cleansing), and Gold (business KPIs) layers with Delta Lake optimization templates (`OPTIMIZE`, `ZORDER BY`, `VACUUM`).
-7. **Data Best Practices CI Quality Gate**: Automated validation runner executing:
-   - Ruff linting for Python/PySpark.
-   - SQLFluff with `sparksql` dialect for SQL queries.
-   - Static analysis detecting big data anti-patterns (unbounded `.collect()`, accidental cross-joins, missing partitions, unbounded `.toPandas()`).
-8. **Automated GitOps with GitHub PR**: Creates feature branches (`feature/data-product-<name>`), stages files, crafts Conventional Commits, and opens rich GitHub Pull Requests embedding data product summaries, Mermaid diagrams, and CI validation reports.
+### 1. Arquitetura Geral da Solução
 
----
+```mermaid
+flowchart TD
+    subgraph UI ["Interface & Visualização"]
+        OWUI["Open WebUI Chat\n(open_webui_pipe.py)"]
+        MERMAID_UI["Renderizador Nativo Mermaid.js\n(erDiagram & graph LR)"]
+    end
 
-## 📦 Project Layout
+    subgraph Core ["Orquestração & Modelos Locais"]
+        PIPE["Open WebUI Pipe\n(Valves Administrativas)"]
+        LANGGRAPH["LangGraph Agent Workflow\n(src/agent/graph.py)"]
+        LOCAL_LLM["Modelo Local (Ollama / vLLM)\n(ex: Qwen 2.5 Coder / Llama 3)"]
+    end
 
-```
-├── configs/
-│   └── semantic_models/
-│       ├── corporate_credit.yaml       # Wholesale Banking semantic ontology
-│       └── sales_lakehouse.yaml        # E-Commerce retail sales ontology
-├── open_webui_pipe.py                  # Open WebUI Pipe integration script
-├── src/
-│   ├── config.py                       # Pydantic Settings & environment loader
-│   ├── databricks/
-│   │   ├── client.py                   # Databricks SDK WorkspaceClient wrapper
-│   │   └── introspector.py             # Unity Catalog inspector & mock fallback
-│   ├── semantic/
-│   │   ├── models.py                   # Pydantic v2 domain, entity & metric models
-│   │   ├── registry.py                 # Multi-file YAML registry & synonym resolver
-│   │   └── compiler.py                 # Multi-table graph join & SparkSQL compiler
-│   ├── visualizer/
-│   │   └── mermaid.py                  # Crow's foot ERD & Medallion lineage generator
-│   ├── etl/
-│   │   ├── generator.py                # Bronze/Silver/Gold PySpark & SQL generator
-│   │   └── templates.py                # Delta OPTIMIZE, ZORDER BY, VACUUM templates
-│   ├── ci/
-│   │   ├── anti_patterns.py            # Static AST rules (collect, cross-join, partitions)
-│   │   ├── report.py                   # Pydantic CI report model & markdown table
-│   │   └── runner.py                   # Programmatic Ruff, SQLFluff & CI runner
-│   ├── gitops/
-│   │   ├── git_client.py               # Feature branch, commit & push automation
-│   │   └── github_pr.py                # PyGithub automated PR creation
-│   └── agent/
-│       ├── state.py                    # LangGraph AgentState TypedDict
-│       ├── tools.py                    # Agent tools dispatching to subsystems
-│       └── graph.py                    # LangGraph StateGraph coordination
-├── tests/                              # Comprehensive test suite
-├── .env.example                        # Template for environment configuration
-├── pyproject.toml                      # Build config and tool definitions
-└── README.md
+    subgraph Knowledge ["Conhecimento & Metadados"]
+        UC["Databricks Unity Catalog\n(Schemas, Tabelas, Chaves)"]
+        SEM["Camada Semântica Declarativa\n(YAML: Dimensões, Métricas, Joins)"]
+        COMPILER["Compilador SparkSQL Seguro\n(Proteção NULLIF contra Divisão por Zero)"]
+    end
+
+    subgraph ETL_Medallion ["Engenharia de Dados (Lakehouse)"]
+        BRONZE["Bronze Layer (Ingestão Raw & Schema Enforcement)"]
+        SILVER["Silver Layer (Limpeza & Deduplicação)"]
+        GOLD["Gold Layer (KPIs Analíticos & Agregações)"]
+    end
+
+    subgraph QualityGate ["Esteira de CI (Boas Práticas de Dados)"]
+        RUFF["Ruff Linter & Formatter (Python/PySpark)"]
+        SQLF["SQLFluff (Dialeto SparkSQL)"]
+        ANTI["Detector de Anti-Patterns\n(collect, cross-join, toPandas)"]
+    end
+
+    subgraph GitOpsLayer ["GitOps & Entrega Contínua"]
+        BRANCH["Feature Branch Automática\n(feature/data-product-name)"]
+        COMMIT["Conventional Commit (feat: ...)"]
+        PR["Abertura de GitHub Pull Request\n(c/ Relatório de CI & Diagrama)"]
+    end
+
+    OWUI <--> PIPE
+    OWUI --- MERMAID_UI
+    PIPE <--> LANGGRAPH
+    LANGGRAPH <--> LOCAL_LLM
+    LANGGRAPH --> UC
+    LANGGRAPH --> SEM
+    SEM --> COMPILER
+    LANGGRAPH --> BRONZE & SILVER & GOLD
+    BRONZE & SILVER & GOLD --> QualityGate
+    QualityGate --> RUFF & SQLF & ANTI
+    QualityGate -->|Aprovado| GitOpsLayer
+    GitOpsLayer --> BRANCH --> COMMIT --> PR
 ```
 
 ---
 
-## ⚙️ Configuration & Environment
+### 2. Diagrama de Sequência Ponta a Ponta
 
-Copy `.env.example` to `.env` and fill in your connection details:
+O fluxo abaixo ilustra a interação completa do usuário desenhando um produto de dados e publicando no GitHub:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Usuário (Open WebUI)
+    participant Pipe as open_webui_pipe.py
+    participant Agent as LangGraph Steward
+    participant Semantic as Camada Semântica & UC
+    participant Visualizer as Mermaid Visualizer
+    participant ETL as Gerador de ETL Medalhão
+    participant CI as Esteira de CI
+    participant GitOps as GitHub API
+
+    User->>Pipe: "Gostaria de modelar um produto de dados de facilities de crédito"
+    Pipe->>Agent: Encaminha prompt com contexto
+    Agent->>Semantic: Inspeciona catálogo & carrega ontologia YAML
+    Semantic-->>Agent: Entidades, dimensões e métricas disponíveis
+    Agent->>Visualizer: Gera modelo relacional e linhagem
+    Visualizer-->>Agent: Bloco Markdown Mermaid (`erDiagram`)
+    Agent-->>User: Retorna diagrama ER no chat com explicação de negócio
+
+    User->>Pipe: "Aprovado! Crie o pipeline Silver em PySpark com deduplicação"
+    Pipe->>Agent: Dispara geração de pipeline
+    Agent->>ETL: Gera código PySpark e SparkSQL estruturado
+    ETL-->>Agent: Scripts com tipagem explícita e regras Delta
+    Agent->>CI: Submete código à esteira de CI
+    Note over CI: Executa Ruff + SQLFluff SparkSQL + Análise de Anti-Patterns
+    CI-->>Agent: Relatório de auditoria (Status: PASSED)
+
+    Agent->>GitOps: Cria branch, commita arquivos e abre Pull Request
+    GitOps-->>Agent: Pull Request #42 criado no GitHub
+    Agent-->>User: Retorna código gerado, relatório de CI e link do Pull Request!
+```
+
+---
+
+## 🚀 Principais Funcionalidades
+
+1. **Integração Nativa Open WebUI**: Script `open_webui_pipe.py` pronto para importação direta com painel de **Valves** administrativas.
+2. **Modelos Locais via Ollama / vLLM**: Opera 100% local e privado via protocolo OpenAI-compatível com streaming de respostas.
+3. **Databricks Unity Catalog Introspection**: Inspeção automática de schemas, tabelas e chaves primárias/estrangeiras, com **modo de demonstração offline** para desenvolvimento sem cluster ativo.
+4. **Camada Semântica Declarativa em YAML**: Definição flexível de dimensões, métricas e regras de negócio com resolução automática de sinônimos.
+5. **Compilador SparkSQL com Resolução em Grafo**: Algoritmo BFS para encontrar o menor caminho de JOIN entre entidades e inserção automática de proteção contra divisão por zero (`NULLIF(..., 0)`).
+6. **Visualização Interativa com Mermaid.js**: Notação Crow's foot (`erDiagram`) e fluxos de linhagem medalhão (`graph LR`) renderizáveis diretamente no chat.
+7. **Geração de Pipelines Medalhão**: Códigos modulares em PySpark e SparkSQL com schema enforcement (Bronze), deduplicação (Silver), agregações analíticas (Gold) e comandos Delta (`OPTIMIZE`, `ZORDER BY`, `VACUUM`).
+8. **Esteira de CI de Boas Práticas**: Execução em memória do **Ruff**, **SQLFluff** (`sparksql`) e análise estática contra anti-patterns (ex: `.collect()`, `CROSS JOIN`, `.toPandas()`).
+9. **GitOps com Auto PR no GitHub**: Criação de feature branch, Conventional Commit e abertura automática de Pull Request com resumo e checklist de CI.
+
+---
+
+## 🐳 Portabilidade: Docker & Podman
+
+O projeto foi construído para máxima portabilidade em ambientes corporativos e de desenvolvimento local, suportando **Docker** e **Podman** (incluindo modo **rootless** por segurança).
+
+### 1. Detecção Automática com Makefile
+
+O `Makefile` detecta automaticamente se você está utilizando `docker` ou `podman` e configura os comandos do compose:
+
+```bash
+# Exibir o mecanismo detectado e todos os comandos disponíveis
+make help
+```
+
+| Comando | Descrição |
+|---|---|
+| `make build` | Constrói a imagem da aplicação usando a engine detectada (`docker` ou `podman`) |
+| `make up` | Sobe a stack completa (Agent + Open WebUI) em segundo plano |
+| `make up-ollama` | Sobe a stack completa + Ollama containerizado (`--profile with-ollama`) |
+| `make down` | Para todos os containers da stack |
+| `make logs` | Acompanha os logs dos containers em tempo real |
+| `make status` | Lista o status dos containers ativos |
+| `make test` | Executa a suíte de 131 testes automatizados |
+| `make lint` | Valida a conformidade de código com Ruff |
+| `make format` | Formata o código automaticamente com Ruff |
+| `make run` | Executa o servidor FastAPI localmente na porta 8000 |
+| `make clean` | Remove arquivos temporários e caches de build |
+
+---
+
+### 2. Uso com Podman (Rootless)
+
+O container foi projetado com um usuário não-privilegiado (`UID 10001: steward`), atendendo aos requisitos de segurança do Podman rootless.
+
+```bash
+# 1. Construir a imagem com Podman
+make podman-build
+
+# 2. Iniciar a stack com Podman Compose
+podman compose up -d
+
+# 3. Verificar containers em execução
+podman ps
+```
+
+> **Dica de Rede no Podman**: Para que o container se comunique com um servidor Ollama rodando no host da máquina, o container usa o hostname especial `host.containers.internal`.
+
+---
+
+### 3. Uso com Docker
+
+```bash
+# 1. Construir a imagem com Docker
+make docker-build
+
+# 2. Iniciar a stack com Docker Compose
+docker compose up -d
+
+# 3. Acessar a interface
+# Open WebUI: http://localhost:3000
+# Databricks Steward API: http://localhost:8000/health
+```
+
+---
+
+## ⚙️ Configuração do Ambiente (.env)
+
+Copie o template `.env.example` e ajuste suas variáveis conforme necessário:
 
 ```bash
 cp .env.example .env
 ```
 
-| Variable | Description | Default |
-|---|---|---|
-| `DATABRICKS_HOST` | Databricks workspace URL | `""` (runs in demo mock mode) |
-| `DATABRICKS_TOKEN` | Databricks Personal Access Token (PAT) | `""` |
-| `DATABRICKS_WAREHOUSE_ID` | Databricks SQL Warehouse ID | `""` |
-| `LOCAL_LLM_BASE_URL` | Local LLM OpenAI API endpoint | `http://localhost:11434/v1` |
-| `LOCAL_LLM_MODEL` | Local model name | `qwen2.5-coder:7b` |
-| `GITHUB_TOKEN` | GitHub Personal Access Token | `""` (runs in PR simulation mode) |
-| `GITHUB_REPOSITORY` | Target repository in `owner/repo` format | `""` |
-| `SEMANTIC_MODELS_PATH` | Path to semantic models directory | `./configs/semantic_models` |
+```ini
+# ===============================================
+# Databricks (Deixe em branco para modo Offline Demo)
+# ===============================================
+DATABRICKS_HOST=https://<workspace-id>.cloud.databricks.com
+DATABRICKS_TOKEN=dapi...
+DATABRICKS_WAREHOUSE_ID=1234567890abcdef
+DATABRICKS_DEFAULT_CATALOG=main
+DATABRICKS_DEFAULT_SCHEMA=default
+
+# ===============================================
+# Modelo Local (Ollama ou vLLM compatível com OpenAI)
+# ===============================================
+LOCAL_LLM_BASE_URL=http://localhost:11434/v1
+LOCAL_LLM_MODEL=qwen2.5-coder:7b
+LOCAL_LLM_API_KEY=ollama
+LOCAL_LLM_TEMPERATURE=0.1
+
+# ===============================================
+# GitHub GitOps (Auto commit, push e Pull Request)
+# ===============================================
+GITHUB_TOKEN=ghp_...
+GITHUB_REPOSITORY=usuario/repositorio
+GITHUB_BASE_BRANCH=main
+
+# ===============================================
+# Configurações Semânticas
+# ===============================================
+SEMANTIC_MODELS_PATH=./configs/semantic_models
+DEFAULT_QUERY_LIMIT=50
+MAX_QUERY_LIMIT=200
+```
 
 ---
 
-## 💻 Quickstart & Python Usage
+## 🌐 Como Integrar com o Open WebUI
 
-### 1. Introspect Unity Catalog (Offline Demo or Live)
+Existem duas formas simples de conectar o Databricks Steward Agent ao Open WebUI:
+
+### Opção A: Como Pipe Nativo (Recomendado)
+1. No Open WebUI, acesse **Painel de Administração** > **Functions / Pipes**.
+2. Clique em **Adicionar Nova Pipe (+)**.
+3. Copie e cole todo o conteúdo do arquivo [`open_webui_pipe.py`](open_webui_pipe.py).
+4. No painel de **Valves** da Pipe, você pode configurar e alterar credenciais do Databricks e parâmetros do LLM local em tempo de execução sem reiniciar serviços.
+5. Salve e selecione o modelo **Databricks Steward** no chat!
+
+### Opção B: Como Conexão OpenAI Externa via REST Server
+1. Suba o servidor com `make run` ou `make up` (porta `8000`).
+2. No Open WebUI, acesse **Configurações** > **Conexões** > **OpenAI API**.
+3. Adicione a URL: `http://localhost:8000/v1` (ou `http://databricks-steward:8000/v1` na rede Docker).
+4. Salve e use o modelo `databricks-steward`.
+
+---
+
+## 💻 Exemplos de Uso via Python SDK
+
+### 1. Inspecionar Catálogo Databricks
 ```python
 from src.databricks.introspector import introspect_catalog
 
+# Inspeciona catálogo ao vivo ou utiliza o mock offline resiliente
 entities = introspect_catalog(catalog="main", schema="default")
-for ent in entities:
-    print(f"Discovered: {ent.name} (layer: {ent.layer})")
+for entity in entities:
+    print(f"Tabela: {entity.name} | Camada: {entity.layer} | Colunas: {len(entity.columns)}")
 ```
 
-### 2. Query Semantic Layer
+### 2. Consultar Camada Semântica & Compilar SparkSQL
 ```python
 from src.semantic.registry import SemanticRegistry
 from src.semantic.compiler import SemanticQueryCompiler
@@ -146,89 +266,89 @@ from src.semantic.compiler import SemanticQueryCompiler
 registry = SemanticRegistry("configs/semantic_models")
 compiler = SemanticQueryCompiler(registry)
 
+# Compila métricas de negócio em SparkSQL com JOIN automático
 sql = compiler.compile_query(
     entity_name="facilities",
     metric_names=["total_credit_limit", "utilization_rate"],
     group_by_dims=["product_type", "status"],
     filters=["status = 'ACTIVE'"],
-    limit=10,
+    limit=10
 )
 print(sql)
 ```
 
-### 3. Generate Mermaid Diagrams
+### 3. Gerar Diagramas Mermaid no Chat
 ```python
 from src.semantic.registry import SemanticRegistry
 from src.visualizer.mermaid import generate_er_diagram, generate_lineage_diagram
 
-reg = SemanticRegistry("configs/semantic_models")
-domain = reg.get_domain("corporate_credit")
+registry = SemanticRegistry("configs/semantic_models")
+domain = registry.get_domain("corporate_credit")
 
-# Crow's foot ER diagram
-erd = generate_er_diagram(domain.entities, domain.relationships)
+# Diagrama de Entidade-Relacionamento nativo Crow's foot
+erd_markdown = generate_er_diagram(domain.entities, domain.relationships)
+print(erd_markdown)
 
-# Medallion lineage flowchart
-lineage = generate_lineage_diagram(domain.entities)
+# Diagrama de Linhagem Medalhão
+lineage_markdown = generate_lineage_diagram(domain.entities)
+print(lineage_markdown)
 ```
 
-### 4. Generate Medallion ETL & Run CI Quality Gate
+### 4. Gerar Pipeline ETL e Validar na Esteira de CI
 ```python
 from src.etl.generator import generate_medallion_pipeline
 from src.ci.runner import run_ci_pipeline
 
-# Generate Silver pipeline
+# Gerar pipeline Silver em PySpark e SparkSQL
 pipeline = generate_medallion_pipeline(domain.entities[0], layer="silver")
 
-# Run automated CI validation
+# Submeter código à esteira de CI
 report = run_ci_pipeline(
     pyspark_code=pipeline.pyspark_code,
-    sparksql_code=pipeline.sparksql_code,
+    sparksql_code=pipeline.sparksql_code
 )
-print("Approved:", report.is_approved)
+
+print(f"Status do CI: {'APROVADO' if report.is_approved else 'REPROVADO'}")
 print(report.summary_markdown)
 ```
 
-### 5. Automated GitOps Pull Request
+### 5. GitOps Automatizado (Auto Branch, Commit & PR)
 ```python
 from src.gitops.github_pr import create_data_product_pr
 
+# Apenas abre PR se o relatório do CI for aprovado
 result = create_data_product_pr(
     product_name="credit-facilities-silver",
     files={
         "pipelines/silver_facilities.py": pipeline.pyspark_code,
-        "pipelines/silver_facilities.sql": pipeline.sparksql_code,
+        "pipelines/silver_facilities.sql": pipeline.sparksql_code
     },
     ci_report=report,
-    diagram_md=erd,
-    dry_run=True,
+    diagram_md=erd_markdown,
+    dry_run=False  # Altere para True em testes locais
 )
-print("PR URL:", result.pr_url)
+
+print("Pull Request criado com sucesso:", result.pr_url)
 ```
 
 ---
 
-## 🌐 Open WebUI Integration
+## 🧪 Suíte de Testes Automatizados
 
-1. In Open WebUI, navigate to **Admin Panel** > **Functions / Pipes**.
-2. Click **Add New Pipe** and import or paste the contents of `open_webui_pipe.py`.
-3. Configure your **Valves** (Databricks credentials, local LLM endpoints, GitHub repository).
-4. Save and select the **Databricks Steward** model in your chat dropdown!
-
----
-
-## 🧪 Testing & Verification
-
-Run Ruff code quality checks and the test suite:
+O projeto conta com **131 testes automatizados** cobrindo todas as camadas do sistema:
 
 ```bash
-# Run Ruff linting
-.venv/bin/ruff check src/
+# Executar todos os testes
+make test
 
-# Run PyTest test suite
-.venv/bin/pytest -v tests/
+# Executar apenas testes de fuzzing e segurança adversarial
+.venv/bin/pytest tests/test_adversarial_fuzzing.py -v
+
+# Executar cenários ponta a ponta
+.venv/bin/pytest tests/test_e2e_scenarios.py -v
 ```
 
 ---
 
-## 📄 License
-Apache-2.0
+## 📄 Licença
+Distribuído sob a licença **Apache-2.0**.
