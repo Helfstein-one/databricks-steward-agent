@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from src.agent.graph import create_steward_graph, get_local_chat_client
@@ -31,9 +33,24 @@ app.add_middleware(
 )
 
 
+def _extract_text(content: Any) -> str:
+    """Safely extract plain text from string or multimodal list content."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict) and "text" in item:
+                parts.append(str(item["text"]))
+            elif isinstance(item, str):
+                parts.append(item)
+        return " ".join(parts)
+    return str(content or "")
+
+
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    content: Any = ""
 
 
 class ChatCompletionRequest(BaseModel):
@@ -98,9 +115,9 @@ def list_models() -> dict[str, Any]:
     }
 
 
-@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
-def chat_completions(request: ChatCompletionRequest) -> ChatCompletionResponse:
-    """Process OpenAI-compatible chat completion request using LangGraph."""
+@app.post("/v1/chat/completions")
+def chat_completions(request: ChatCompletionRequest) -> Any:
+    """Process OpenAI-compatible chat completion request using LangGraph with streaming support."""
     try:
         llm = get_local_chat_client(
             base_url=settings.local_llm_base_url,
@@ -114,31 +131,95 @@ def chat_completions(request: ChatCompletionRequest) -> ChatCompletionResponse:
         prompt = ""
         for m in reversed(request.messages):
             if m.role == "user":
-                prompt = m.content
-                break
+                prompt = _extract_text(m.content)
+                if prompt.strip():
+                    break
 
         if not prompt:
             prompt = "Olá! Como posso ajudar na governança ou engenharia de dados do Databricks?"
 
-        result = graph.invoke({"messages": [{"role": "user", "content": prompt}]})
-        messages = result.get("messages", [])
-        
-        reply_text = ""
-        for m in reversed(messages):
-            if hasattr(m, "content") and m.content and getattr(m, "type", "") in ("ai", "AIMessage"):
-                reply_text = str(m.content)
-                break
-            elif isinstance(m, dict) and m.get("role") == "assistant":
-                reply_text = str(m.get("content", ""))
-                break
+        result = graph.invoke({
+            "messages": [{"role": "user", "content": prompt}],
+            "user_query": prompt,
+        })
+
+        reply_text = str(result.get("response") or "")
+        if not reply_text:
+            messages = result.get("messages", [])
+            for m in reversed(messages):
+                if hasattr(m, "content") and m.content and getattr(m, "type", "") in ("ai", "AIMessage"):
+                    reply_text = str(m.content)
+                    break
+                elif isinstance(m, dict) and m.get("role") == "assistant":
+                    reply_text = str(m.get("content", ""))
+                    break
 
         if not reply_text:
             reply_text = "Solicitação processada pelo Databricks Steward Agent."
 
+        model_name = request.model or "databricks-steward"
+        chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+        created_ts = int(time.time())
+
+        # Support streaming SSE if requested by client (e.g. Open WebUI)
+        if request.stream:
+            def _sse_generator():
+                first_chunk = {
+                    "id": chunk_id,
+                    "object": "chat.completion.chunk",
+                    "created": created_ts,
+                    "model": model_name,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"role": "assistant", "content": ""},
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+                yield f"data: {json.dumps(first_chunk)}\n\n"
+
+                chunk_size = 16
+                for i in range(0, len(reply_text), chunk_size):
+                    delta_chunk = {
+                        "id": chunk_id,
+                        "object": "chat.completion.chunk",
+                        "created": created_ts,
+                        "model": model_name,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": reply_text[i : i + chunk_size]},
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                    yield f"data: {json.dumps(delta_chunk)}\n\n"
+
+                stop_chunk = {
+                    "id": chunk_id,
+                    "object": "chat.completion.chunk",
+                    "created": created_ts,
+                    "model": model_name,
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                }
+                yield f"data: {json.dumps(stop_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(
+                _sse_generator(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
         return ChatCompletionResponse(
-            id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
-            created=int(time.time()),
-            model=request.model or "databricks-steward",
+            id=chunk_id,
+            created=created_ts,
+            model=model_name,
             choices=[
                 ChatCompletionResponseChoice(
                     index=0,
