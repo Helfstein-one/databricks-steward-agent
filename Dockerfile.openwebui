@@ -1,0 +1,11 @@
+# Open WebUI optimized and patched for Apple Silicon / Podman AppleHV virtualization
+FROM ghcr.io/open-webui/open-webui:main
+
+USER root
+
+# Replace cryptography 48.x with 42.0.8 to avoid SIGILL on AppleHV ARM64 virtualization
+RUN pip install --no-cache-dir "cryptography<=42.0.8"
+
+USER 0
+
+ENTRYPOINT ["bash", "start.sh"]
