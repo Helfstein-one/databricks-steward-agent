@@ -1,0 +1,151 @@
+domain: corporate_credit
+description: Wholesale Banking & Corporate Credit Portfolio Semantic Model
+catalog: main
+schema_name: corporate_credit
+
+entities:
+  - name: facilities
+    table: main.corporate_credit.credit_facilities
+    primary_key: facility_id
+    synonyms:
+      - credit_facilities
+      - linhas_de_credito
+      - facilidades
+      - contracts
+    dimensions:
+      - name: facility_id
+        type: string
+        column: facility_id
+      - name: borrower_id
+        type: string
+        column: borrower_id
+      - name: product_type
+        type: string
+        column: product_type
+      - name: status
+        type: string
+        column: status
+      - name: currency
+        type: string
+        column: currency
+      - name: origination_date
+        type: date
+        column: origination_date
+      - name: maturity_date
+        type: date
+        column: maturity_date
+    metrics:
+      - name: total_credit_limit
+        type: sum
+        sql: SUM(credit_limit)
+        synonyms:
+          - limite_total
+          - credit_limit
+      - name: utilized_amount
+        type: sum
+        sql: SUM(outstanding_balance)
+        synonyms:
+          - saldo_devedor
+          - drawn_amount
+      - name: average_interest_rate
+        type: avg
+        sql: AVG(interest_rate)
+        synonyms:
+          - taxa_media
+      - name: utilization_rate
+        type: ratio
+        sql: SUM(outstanding_balance) / NULLIF(SUM(credit_limit), 0)
+        synonyms:
+          - taxa_utilizacao
+
+  - name: borrowers
+    table: main.corporate_credit.borrowers
+    primary_key: borrower_id
+    synonyms:
+      - tomadores
+      - clientes
+      - corporate_clients
+      - companies
+    dimensions:
+      - name: borrower_id
+        type: string
+        column: borrower_id
+      - name: legal_name
+        type: string
+        column: legal_name
+        synonyms:
+          - company_name
+          - razao_social
+      - name: industry_sector
+        type: string
+        column: industry_sector
+        synonyms:
+          - setor
+          - industry
+      - name: credit_rating
+        type: string
+        column: credit_rating
+        synonyms:
+          - rating
+          - classificacao_risco
+      - name: country
+        type: string
+        column: country
+        synonyms:
+          - pais
+    metrics:
+      - name: borrower_count
+        type: count
+        sql: COUNT(DISTINCT borrower_id)
+
+  - name: impairments
+    table: main.corporate_credit.impairments
+    primary_key: impairment_id
+    synonyms:
+      - provisoes
+      - ecl
+      - losses
+    dimensions:
+      - name: impairment_id
+        type: string
+        column: impairment_id
+      - name: facility_id
+        type: string
+        column: facility_id
+      - name: stage
+        type: string
+        column: stage
+        synonyms:
+          - estagio
+          - ifrs9_stage
+      - name: calculation_date
+        type: date
+        column: calculation_date
+    metrics:
+      - name: total_ecl
+        type: sum
+        sql: SUM(ecl_amount)
+        synonyms:
+          - perda_esperada
+          - ecl_total
+      - name: stage3_ecl
+        type: derived
+        sql: SUM(CASE WHEN stage = 'Stage 3' THEN ecl_amount ELSE 0 END)
+      - name: ecl_coverage_ratio
+        type: ratio
+        sql: SUM(ecl_amount) / NULLIF(SUM(credit_limit), 0)
+        synonyms:
+          - cobertura_ecl
+          - indice_cobertura
+
+relationships:
+  - from_entity: facilities
+    to_entity: borrowers
+    from_column: borrower_id
+    to_column: borrower_id
+    type: many_to_one
+  - from_entity: impairments
+    to_entity: facilities
+    from_column: facility_id
+    to_column: facility_id
+    type: many_to_one

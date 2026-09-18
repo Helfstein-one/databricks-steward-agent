@@ -1,0 +1,167 @@
+domain: sales_lakehouse
+description: E-Commerce & Retail Sales Lakehouse Semantic Model
+catalog: main
+schema_name: sales
+
+entities:
+  - name: customers
+    table: main.sales.customers
+    primary_key: customer_id
+    synonyms:
+      - clientes
+      - compradores
+      - buyers
+    dimensions:
+      - name: customer_id
+        type: string
+        column: customer_id
+      - name: customer_name
+        type: string
+        column: customer_name
+        synonyms:
+          - nome_cliente
+          - full_name
+      - name: segment
+        type: string
+        column: segment
+        synonyms:
+          - segmento
+      - name: country
+        type: string
+        column: country
+      - name: created_at
+        type: timestamp
+        column: created_at
+    metrics:
+      - name: total_customers
+        type: count
+        sql: COUNT(DISTINCT customer_id)
+
+  - name: orders
+    table: main.sales.orders
+    primary_key: order_id
+    synonyms:
+      - pedidos
+      - sales_orders
+    dimensions:
+      - name: order_id
+        type: string
+        column: order_id
+      - name: customer_id
+        type: string
+        column: customer_id
+      - name: order_date
+        type: date
+        column: order_date
+      - name: status
+        type: string
+        column: status
+      - name: channel
+        type: string
+        column: channel
+        synonyms:
+          - canal_vendas
+    metrics:
+      - name: total_orders
+        type: count
+        sql: COUNT(DISTINCT order_id)
+
+  - name: order_items
+    table: main.sales.order_items
+    primary_key: item_id
+    synonyms:
+      - itens_pedido
+      - line_items
+    dimensions:
+      - name: item_id
+        type: string
+        column: item_id
+      - name: order_id
+        type: string
+        column: order_id
+      - name: product_id
+        type: string
+        column: product_id
+      - name: quantity
+        type: int
+        column: quantity
+      - name: unit_price
+        type: double
+        column: unit_price
+      - name: discount_amount
+        type: double
+        column: discount_amount
+      - name: total_amount
+        type: double
+        column: total_amount
+    metrics:
+      - name: gross_revenue
+        type: sum
+        sql: SUM(quantity * unit_price)
+        synonyms:
+          - receita_bruta
+      - name: net_revenue
+        type: sum
+        sql: SUM(total_amount)
+        synonyms:
+          - receita_liquida
+          - total_sales
+      - name: total_discount
+        type: sum
+        sql: SUM(discount_amount)
+        synonyms:
+          - desconto_total
+      - name: average_order_value
+        type: ratio
+        sql: SUM(total_amount) / NULLIF(COUNT(DISTINCT order_id), 0)
+        synonyms:
+          - ticket_medio
+          - aov
+      - name: discount_rate
+        type: ratio
+        sql: SUM(discount_amount) / NULLIF(SUM(quantity * unit_price), 0)
+        synonyms:
+          - taxa_desconto
+
+  - name: products
+    table: main.sales.products
+    primary_key: product_id
+    synonyms:
+      - produtos
+      - merchandise
+    dimensions:
+      - name: product_id
+        type: string
+        column: product_id
+      - name: product_name
+        type: string
+        column: product_name
+      - name: category
+        type: string
+        column: category
+        synonyms:
+          - categoria
+      - name: cost
+        type: double
+        column: cost
+    metrics:
+      - name: product_count
+        type: count
+        sql: COUNT(DISTINCT product_id)
+
+relationships:
+  - from_entity: orders
+    to_entity: customers
+    from_column: customer_id
+    to_column: customer_id
+    type: many_to_one
+  - from_entity: order_items
+    to_entity: orders
+    from_column: order_id
+    to_column: order_id
+    type: many_to_one
+  - from_entity: order_items
+    to_entity: products
+    from_column: product_id
+    to_column: product_id
+    type: many_to_one

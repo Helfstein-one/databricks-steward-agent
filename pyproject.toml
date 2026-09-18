@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "databricks-steward-agent"
+version = "0.1.0"
+description = "GenAI Data Steward Agent for Databricks with Open WebUI, Semantic Layer, Mermaid diagrams, CI workflow, and GitOps."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "databricks-sdk>=0.28.0",
+    "pydantic>=2.7.0",
+    "pyyaml>=6.0.1",
+    "ruff>=0.5.0",
+    "sqlfluff>=3.0.0",
+    "PyGithub>=2.3.0",
+    "langchain-core>=0.2.0",
+    "langgraph>=0.1.0",
+    "langchain-openai>=0.1.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.1"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0"
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.sqlfluff.core]
+dialect = "sparksql"
+templater = "raw"
+max_line_length = 100
+exclude_rules = "references.keywords"
