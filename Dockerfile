@@ -32,7 +32,8 @@ USER steward
 
 # Copy requirements and install
 COPY --chown=steward:steward requirements.txt .
-RUN pip install --user -r requirements.txt
+RUN pip install --user "cryptography<=42.0.8" && \
+    pip install --user -r requirements.txt
 
 # Copy application source code and configurations
 COPY --chown=steward:steward pyproject.toml .

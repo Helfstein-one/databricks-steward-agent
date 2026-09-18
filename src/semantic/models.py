@@ -137,3 +137,8 @@ class SemanticDomainModel(BaseModel):
     metrics: list[MetricModel] = Field(default_factory=list)
     relationships: list[RelationshipModel] = Field(default_factory=list)
     synonyms: dict[str, str] = Field(default_factory=dict)
+
+    @property
+    def name(self) -> str:
+        """Alias for domain name."""
+        return self.domain

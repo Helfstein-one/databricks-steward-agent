@@ -155,8 +155,8 @@ def chat_completions(request: ChatCompletionRequest) -> ChatCompletionResponse:
 def get_semantic_models() -> dict[str, Any]:
     """Retrieve all loaded semantic domains and entities."""
     registry = SemanticRegistry(settings.semantic_models_path)
-    domains = [d.name for d in registry.domains.values()]
-    entities = [e.name for e in registry.entities.values()]
+    domains = [getattr(d, "domain", getattr(d, "name", "unknown")) for d in registry.domains.values()]
+    entities = [getattr(e, "name", "unknown") for e in registry.entities.values()]
     return {"domains": domains, "entities": entities}
 
 
@@ -184,15 +184,17 @@ def validate_code_ci(req: CiValidateRequest) -> dict[str, Any]:
     )
     return {
         "is_approved": report.is_approved,
+        "ruff_status": report.ruff_status,
+        "sqlfluff_status": report.sqlfluff_status,
         "summary": report.summary_markdown,
-        "results": [
+        "violations": [
             {
-                "step": r.step_name,
-                "passed": r.passed,
-                "message": r.message,
-                "errors": r.errors,
+                "rule": v.rule,
+                "line": v.line,
+                "message": v.message,
+                "severity": v.severity,
             }
-            for r in report.results
+            for v in (report.violations + report.anti_patterns)
         ],
     }
 
