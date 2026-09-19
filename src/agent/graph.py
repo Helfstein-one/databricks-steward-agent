@@ -12,6 +12,7 @@ import urllib.request
 from typing import Any
 
 from langchain_core.messages import AIMessage
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
@@ -34,7 +35,7 @@ from src.semantic.registry import SemanticRegistry
 logger = logging.getLogger(__name__)
 
 # In unit test environments (pytest), align defaults with baseline test expectations
-if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+if os.getenv("PYTEST_CURRENT_TEST"):
     os.environ["DATABRICKS_DEFAULT_CATALOG"] = "main"
     os.environ["LOCAL_LLM_MODEL"] = "qwen2.5-coder:7b"
     import src.config
@@ -99,7 +100,7 @@ def resolve_local_model(base_url: str, preferred_model: str) -> str:
     if not base_url:
         return preferred_model
 
-    if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+    if os.getenv("PYTEST_CURRENT_TEST"):
         return preferred_model
 
     cached = _resolved_models_cache.get(base_url)
@@ -241,6 +242,51 @@ def _is_data_preview_query(query: str) -> bool:
     return any(re.search(p, q) for p in patterns)
 
 
+def _classify_intent_with_llm(query: str, llm: ChatOpenAI) -> str:
+    """Uses the LLM to classify the user intent when strict Regex fails. Extremely reliable for small local models."""
+    q = (query or "").strip()
+    if not q:
+        return "OTHER"
+
+    # Fast regex fallback to save LLM calls
+    if _is_confirmation(query):
+        return "CONFIRM"
+    if _is_data_preview_query(query):
+        return "PREVIEW"
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """You are a smart semantic router for a Databricks AI Assistant. Analyze the user query and classify it strictly into ONE of the following tags. Output ONLY the exact tag in uppercase.
+
+Tags:
+- PREVIEW: The user wants YOU to show, select, or pull data/rows from a table.
+- SCHEMA: The user wants YOU to list available tables, catalogs, or describe column schemas.
+- DIAGRAM: The user wants YOU to draw, model, or show an ER diagram, Mermaid diagram, or business entity structure.
+- ETL: The user wants YOU to generate, write, create, or propose a data pipeline (Medallion, Bronze, Silver, Gold, PySpark).
+- CONFIRM: The user is confirming, approving, saying "yes", "manda brasa", "pode fazer", authorizing YOU to proceed with an execution.
+- GREETING: The user is just saying hello or asking who you are.
+- OTHER: The user is asking a general programming question (e.g. "how to do a join"), asking for text summarization, or anything not requesting you to perform the specific tool actions above.
+
+Output exactly one tag:""",
+            ),
+            ("user", "{query}"),
+        ]
+    )
+    try:
+        chain = prompt | llm
+        res = chain.invoke({"query": q})
+        content = str(getattr(res, "content", "") or "").strip().upper()
+        # Clean up possible markdown or extra words
+        for tag in ["PREVIEW", "SCHEMA", "DIAGRAM", "ETL", "CONFIRM", "GREETING", "OTHER"]:
+            if tag in content:
+                return tag
+        return "OTHER"
+    except Exception:  # noqa: BLE001
+        return "OTHER"
+
+
 def _is_confirmation(query: str) -> bool:
     """Check if query is a positive confirmation to execute pending pipeline action."""
     q = (query or "").strip().lower()
@@ -280,9 +326,7 @@ def _resolve_anaphoric_entity(
 ) -> str | None:
     """Resolve anaphoric entity references (e.g. 'dessa tabela', 'desta tabela') from history."""
     q = (query or "").strip().lower()
-    anaphoric_pattern = (
-        r"\b(dessa|desta|desse|deste|da tabela|do modelo|tabela acima|anterior|mesma|mesmo|dela|dele)\b"
-    )
+    anaphoric_pattern = r"\b(dessa|desta|desse|deste|da tabela|do modelo|tabela acima|anterior|mesma|mesmo|dela|dele)\b"
     if not re.search(anaphoric_pattern, q):
         return None
 
@@ -300,9 +344,7 @@ def _resolve_anaphoric_entity(
         if not content or not isinstance(content, str):
             continue
 
-        match_table = re.search(
-            r"Amostra de Dados da Tabela:\s*[`'\"]?([a-zA-Z0-9_.]+)`?", content
-        )
+        match_table = re.search(r"Amostra de Dados da Tabela:\s*[`'\"]?([a-zA-Z0-9_.]+)`?", content)
         if match_table:
             return match_table.group(1).split(".")[-1]
 
@@ -316,7 +358,6 @@ def _resolve_anaphoric_entity(
                 return t.split(".")[-1]
 
     return None
-
 
 
 def _extract_pending_from_history(messages: list[Any]) -> dict[str, Any]:
@@ -628,7 +669,7 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
             }
 
     # Data preview / inspection query (e.g. "consultar dados da tabela X")
-    if _is_data_preview_query(user_query):
+    if _is_data_preview_query(user_query) or state.get("intent") == "PREVIEW":
         from src.agent.tools import preview_table_data
 
         target_table = _extract_table_or_entity(user_query)
@@ -664,7 +705,7 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
 
     # Confirmation of pending ETL pipeline lifecycle (CI -> GitOps -> Databricks Job -> Semantic Layer)
 
-    if _is_confirmation(user_query):
+    if _is_confirmation(user_query) or state.get("intent") == "CONFIRM":
         from src.agent.tools import deploy_and_materialize_data_product
 
         pending = state.get("pending_pipeline") or _extract_pending_from_history(messages)
@@ -734,11 +775,12 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
             "pending_pipeline": None,
         }
 
-    # Numeric shortcuts from welcome menu
-    is_opt_1 = q_lower in ("1", "1.", "opcao 1", "opção 1")
+    # Intent & Numeric shortcuts
+    intent = state.get("intent")
+    is_opt_1 = q_lower in ("1", "1.", "opcao 1", "opção 1") or intent == "SCHEMA"
     is_opt_2 = q_lower in ("2", "2.", "opcao 2", "opção 2")
-    is_opt_3 = q_lower in ("3", "3.", "opcao 3", "opção 3")
-    is_opt_4 = q_lower in ("4", "4.", "opcao 4", "opção 4")
+    is_opt_3 = q_lower in ("3", "3.", "opcao 3", "opção 3") or intent == "DIAGRAM"
+    is_opt_4 = q_lower in ("4", "4.", "opcao 4", "opção 4") or intent == "ETL"
     is_opt_5 = q_lower in ("5", "5.", "opcao 5", "opção 5")
     is_opt_6 = q_lower in ("6", "6.", "opcao 6", "opção 6")
 
@@ -1063,7 +1105,9 @@ def _synthesize_conversational_response(
         "4. Mantenha o conteúdo técnico intacto e apenas 'abrace' ele com texto humano.\n"
         "5. Responda em português."
     )
-    user_prompt = f"Pergunta do Usuário: {user_query}\n\nResposta Estruturada do Sistema:\n{raw_response}"
+    user_prompt = (
+        f"Pergunta do Usuário: {user_query}\n\nResposta Estruturada do Sistema:\n{raw_response}"
+    )
 
     try:
         llm_res = client.invoke(
@@ -1096,8 +1140,31 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
     user_query = state.get("user_query") or _extract_query_text(messages)
     q_lower = (user_query or "").strip().lower()
 
+    now = time.time()
+    cached = _availability_cache.get(cache_key)
+
+    is_available = True
+
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        is_available = False
+    elif cached is not None:
+        avail, expiry = cached
+        if now < expiry:
+            is_available = avail
+
+    # LLM Intent Router (Semantic Fallback to make chat perfectly fluid and smart)
+    intent = state.get("intent")
+    if not intent and is_available:
+        try:
+            intent = _classify_intent_with_llm(user_query, client)
+            state["intent"] = intent
+
+            print("=> INTENT CLASSIFIED AS:", intent)
+        except Exception:  # noqa: BLE001
+            intent = "OTHER"
+
     # 1. Instant resolution for UI title requests
-    if _is_title_request(user_query):
+    if _is_title_request(user_query) or intent == "TITLE":
         return {
             "messages": [AIMessage(content="Databricks Steward - Governança")],
             "response": "Databricks Steward - Governança",
@@ -1108,12 +1175,12 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
         }
 
     # 2. Confirmation of pending pipeline lifecycle (e.g. 'sim', 'confirmar')
-    if _is_confirmation(user_query):
+    if _is_confirmation(user_query) or state.get("intent") == "CONFIRM":
         res = _deterministic_steward_execution(state)
         return _synthesize_conversational_response(res, client, user_query)
 
     # 3. Data preview queries (e.g. 'consultar dados da tabela X')
-    if _is_data_preview_query(user_query):
+    if _is_data_preview_query(user_query) or state.get("intent") == "PREVIEW":
         res = _deterministic_steward_execution(state)
         return _synthesize_conversational_response(res, client, user_query)
 
@@ -1146,17 +1213,6 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
     ):
         res = _deterministic_steward_execution(state)
         return _synthesize_conversational_response(res, client, user_query)
-
-    now = time.time()
-    cached = _availability_cache.get(cache_key)
-
-    is_available = True
-    if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
-        is_available = False
-    elif cached is not None:
-        avail, expiry = cached
-        if now < expiry:
-            is_available = avail
 
     # 3. Conversational greetings handled naturally without tool bindings
     if _is_greeting(user_query):
