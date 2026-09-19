@@ -210,3 +210,58 @@ def test_steward_node_portuguese_greetings():
         assert "Databricks Steward Agent" in out["response"]
         assert "Unity Catalog Introspection" in out["response"]
         assert "Dica:" in out["response"]
+
+
+def test_steward_node_conceptual_explanations():
+    """Verify conceptual questions return rich educational explanations instead of raw metadata dumps."""
+    # Semantic layer
+    sem_out = steward_node({
+        "messages": [{"role": "user", "content": "o que é camada semantica ?"}],
+        "user_query": "o que é camada semantica ?",
+    })
+    assert "Camada Semântica (Semantic Layer)" in sem_out["response"]
+    assert "Fonte Única da Verdade" in sem_out["response"]
+    assert "corporate_credit" in sem_out["response"]
+
+    # Unity Catalog
+    uc_out = steward_node({
+        "messages": [{"role": "user", "content": "o que é o unity catalog?"}],
+        "user_query": "o que é o unity catalog?",
+    })
+    assert "Unity Catalog" in uc_out["response"]
+    assert "3 Níveis" in uc_out["response"]
+
+    # Medallion Architecture
+    med_out = steward_node({
+        "messages": [{"role": "user", "content": "como funciona a arquitetura medalhao?"}],
+        "user_query": "como funciona a arquitetura medalhao?",
+    })
+    assert "Arquitetura Medalhão" in med_out["response"]
+    assert "Bronze" in med_out["response"]
+    assert "Silver" in med_out["response"]
+    assert "Gold" in med_out["response"]
+
+    # CI Quality Gate
+    ci_out = steward_node({
+        "messages": [{"role": "user", "content": "para que serve a esteira de ci?"}],
+        "user_query": "para que serve a esteira de ci?",
+    })
+    assert "Esteira de CI" in ci_out["response"]
+    assert "Ruff" in ci_out["response"]
+    assert "SQLFluff" in ci_out["response"]
+
+    # GitOps
+    git_out = steward_node({
+        "messages": [{"role": "user", "content": "o que é gitops no lakehouse?"}],
+        "user_query": "o que é gitops no lakehouse?",
+    })
+    assert "GitOps" in git_out["response"]
+    assert "Pull Request" in git_out["response"]
+
+    # Mermaid
+    m_out = steward_node({
+        "messages": [{"role": "user", "content": "o que sao diagramas mermaid?"}],
+        "user_query": "o que sao diagramas mermaid?",
+    })
+    assert "Mermaid.js" in m_out["response"]
+    assert "erDiagram" in m_out["response"]

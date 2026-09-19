@@ -131,6 +131,133 @@ def _is_title_request(query: str) -> bool:
     )
 
 
+def _is_conceptual_question(query: str) -> bool:
+    """Check if query is a conceptual or educational question rather than an action request."""
+    q = (query or "").strip().lower()
+    patterns = [
+        r"^(o\s+que\s+[ée]|o\s+que\s+s[aã]o|o\s+que\s+significa)\b",
+        r"^(como\s+funciona|como\s+usar|para\s+que\s+serve|qual\s+(a\s+)?diferen[çc]a)\b",
+        r"^(me\s+)?(explique|conte|fale|esclare[çc]a)\b",
+        r"^(what\s+is|what\s+are|how\s+does|how\s+do|explain)\b",
+        r"\b(o\s+que\s+[ée]|o\s+que\s+s[aã]o|para\s+que\s+serve)\b",
+    ]
+    return any(re.search(p, q) for p in patterns)
+
+
+def _get_conceptual_explanation(query: str) -> str | None:
+    """Return tailored, educational markdown explanation for core Lakehouse concepts."""
+    q = (query or "").strip().lower()
+
+    # 1. Camada Semântica
+    if any(k in q for k in ("semantica", "semântica", "semantic", "ontologia", "métrica", "metrica")):
+        return (
+            "### 🧠 O que é a Camada Semântica (Semantic Layer)?\n\n"
+            "A **Camada Semântica** é uma camada de abstração intermediária entre as tabelas físicas do Lakehouse "
+            "(como Delta tables no Databricks) e os consumidores de dados (analistas de negócio, ferramentas de BI como Power BI/Tableau e assistentes GenAI).\n\n"
+            "Ela traduz esquemas técnicos e nomes de colunas de banco de dados em **conceitos de negócio unificados**, definindo dimensões, métricas analíticas e regras de relacionamento.\n\n"
+            "---\n\n"
+            "### 🎯 Principais Benefícios:\n"
+            "1. **Fonte Única da Verdade (Single Source of Truth):**\n"
+            "   Métricas analíticas (ex: *Gross Revenue*, *Utilized Amount*, *Default Rate*) são declaradas uma única vez com regras padronizadas, evitando que cada analista calcule números divergentes em SQLs isolados.\n"
+            "2. **Abstração Automática de Joins:**\n"
+            "   O usuário ou a IA não precisam escrever joins complexos manualmente; a camada semântica calcula o melhor caminho no grafo de entidades (ex: `pedidos -> itens -> clientes`) e compila o SQL otimizado.\n"
+            "3. **Proteções de Qualidade de Dados:**\n"
+            "   Aplica regras de segurança matemática automaticamente, como prevenção de divisão por zero (`NULLIF(..., 0)`) e filtros obrigatórios de partição.\n\n"
+            "---\n\n"
+            "### 📦 Camada Semântica no Databricks Steward Agent:\n"
+            "Neste projeto, as ontologias são mantidas em arquivos **YAML** declarativos (`configs/semantic_models/`):\n"
+            "- **`corporate_credit`**: Gestão de carteira de crédito atacado (`facilities`, `borrowers`, `impairments`) com métricas como `utilization_rate` e `ecl_coverage_ratio`.\n"
+            "- **`sales_lakehouse`**: E-commerce e varejo (`orders`, `order_items`, `customers`, `products`) com métricas como `gross_revenue` e `average_order_value`.\n\n"
+            "💡 **Próximos passos práticos:**\n"
+            "- Digite `2` ou *'ver modelos semânticos'* para listar entidades e métricas detalhadas.\n"
+            "- Peça *'desenhar diagrama da camada semântica'* para ver o modelo ER visual!\n"
+            "- Peça *'compilar query da métrica gross_revenue por canal'* para gerar o SparkSQL."
+        )
+
+    # 2. Unity Catalog
+    if any(k in q for k in ("unity", "catalog", "catálogo", "catalogo", "metadado")):
+        return (
+            "### 🏛️ O que é o Databricks Unity Catalog?\n\n"
+            "O **Unity Catalog** é a solução de governança unificada do Databricks para gerenciar dados, arquivos, modelos de machine learning e notebooks em múltiplos workspaces e nuvens (AWS, Azure, GCP).\n\n"
+            "---\n\n"
+            "### 🎯 Principais Pilares:\n"
+            "1. **Namespace de 3 Níveis (`catalogo.schema.tabela`):**\n"
+            "   Padroniza o acesso a tabelas e volumes Delta eliminando a ambiguidade do antigo modelo de dois níveis.\n"
+            "2. **Controle de Acesso Centralizado (ACLs):**\n"
+            "   Define permissões declarativas com ANSI SQL padrão (`GRANT SELECT ON ... TO ...`) válidas para SQL Warehouses e clusters Spark.\n"
+            "3. **Linhagem Automatizada de Dados (Data Lineage):**\n"
+            "   Rastreia o fluxo dos dados em tempo real da camada Bronze até os dashboards em nível de coluna.\n\n"
+            "---\n\n"
+            "💡 **Próximos passos práticos:**\n"
+            "- Digite `1` ou *'inspecionar catálogo'* para listar tabelas e schemas disponíveis no seu Lakehouse!"
+        )
+
+    # 3. Arquitetura Medalhão
+    if any(k in q for k in ("medalhao", "medallion", "bronze", "silver", "gold")):
+        return (
+            "### 🥇 O que é a Arquitetura Medalhão (Medallion Architecture)?\n\n"
+            "A **Arquitetura Medalhão** é o padrão de engenharia de dados recomendado pela Databricks para construir pipelines confiáveis e auditáveis no Lakehouse, dividida em 3 camadas progressivas de qualidade:\n\n"
+            "1. **🥉 Camada Bronze (Raw Ingestion):**\n"
+            "   - Dados brutos exatamente como chegam da origem (append-only), com histórico e metadados de ingestão.\n"
+            "2. **🥈 Camada Silver (Cleansed & Conformed):**\n"
+            "   - Dados limpos, tipados explicitamente, deduplicados (`dropDuplicates`) e integrados via MERGE idempotente.\n"
+            "3. **🥇 Camada Gold (Business Analytics):**\n"
+            "   - Tabelas agregadas e preparadas para relatórios executivos, métricas de negócio e modelos de machine learning.\n\n"
+            "---\n\n"
+            "💡 **Próximos passos práticos:**\n"
+            "- Digite `4` ou *'gerar pipeline etl silver'* para ver o código PySpark e SparkSQL com Delta Lake gerado automaticamente!"
+        )
+
+    # 4. Esteira de CI de Boas Práticas
+    if any(k in q for k in ("ci", "esteira", "lint", "ruff", "sqlfluff", "qualidade", "anti-pattern", "antipattern")):
+        return (
+            "### 🛡️ O que é a Esteira de CI para Dados (Data Quality Gate)?\n\n"
+            "A **Esteira de CI (Continuous Integration)** de dados do Databricks Steward Agent é um portão de qualidade mandatório que valida códigos antes de qualquer commit ou abertura de Pull Request.\n\n"
+            "---\n\n"
+            "### 🔍 Verificações Executadas:\n"
+            "1. **Ruff (Python / PySpark):** Linter ultrarrápido que audita formatação, convenções PEP 8, imports limpos e sintaxe.\n"
+            "2. **SQLFluff (SparkSQL Dialect):** Valida conformidade DDL/DML, quebras de linha e estilo de queries no dialeto `sparksql`.\n"
+            "3. **Scanner de Anti-Patterns de Dados:** Detecta riscos críticos como chamadas de `.collect()` que estouram o driver, cross joins acidentais e conversões não autorizadas de `.toPandas()`.\n\n"
+            "---\n\n"
+            "💡 **Próximos passos práticos:**\n"
+            "- Digite `5` ou *'validar código na esteira de ci'* para executar a esteira e emitir o relatório de diagnóstico!"
+        )
+
+    # 5. GitOps
+    if any(k in q for k in ("gitops", "git", "pull request", "pr", "branch", "commit")):
+        return (
+            "### 🚀 O que é GitOps na Engenharia de Dados?\n\n"
+            "**GitOps** é o paradigma onde o repositório Git é a **única fonte da verdade** para o ciclo de vida do código de dados, pipelines e configurações.\n\n"
+            "---\n\n"
+            "### 🔄 Como o Databricks Steward Agent executa GitOps:\n"
+            "1. Gera os scripts do produto de dados em `pipelines/<nome>/`.\n"
+            "2. Valida o código na esteira de CI (Ruff + SQLFluff + Anti-patterns).\n"
+            "3. Se aprovado, cria automaticamente a feature branch `feature/data-product-<slug>`.\n"
+            "4. Realiza commit convencional (`feat(data-product): ...`).\n"
+            "5. Abre o Pull Request no GitHub com o relatório completo de CI embutido na descrição para aprovação.\n\n"
+            "---\n\n"
+            "💡 **Próximos passos práticos:**\n"
+            "- Digite `6` ou *'abrir pull request'* para disparar o fluxo GitOps completo!"
+        )
+
+    # 6. Mermaid
+    if any(k in q for k in ("mermaid", "diagrama", "erd", "linhagem", "lineage")):
+        return (
+            "### 📊 O que são Diagramas Mermaid.js no Lakehouse?\n\n"
+            "**Mermaid.js** é uma sintaxe declarativa em texto simples que renderiza diagramas visuais diretamente no chat do Open WebUI sem necessidade de ferramentas externas.\n\n"
+            "---\n\n"
+            "### 📐 Diagramas Suportados:\n"
+            "1. **Diagramas ER (`erDiagram`):** Notação *Crow's foot* mostrando tabelas, chaves primárias (PK), chaves estrangeiras (FK) e relacionamentos (1:N, N:M).\n"
+            "2. **Diagramas de Linhagem Medalhão (`graph LR`):** Mapeamento do fluxo de dados da camada Bronze -> Silver -> Gold.\n\n"
+            "---\n\n"
+            "💡 **Próximos passos práticos:**\n"
+            "- Digite `3` ou *'desenhar diagrama'* para visualizar o modelo de crédito corporativo!\n"
+            "- Peça *'desenhar diagrama de vendas'* para ver o modelo de varejo!"
+        )
+
+    return None
+
+
 def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
     """Fallback deterministic rule-based router executing steward capabilities."""
     messages = state.get("messages", [])
@@ -154,6 +281,19 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
             "ci_report": ci_report,
             "gitops_result": gitops_result,
         }
+
+    # Conceptual questions (e.g. "o que é camada semantica?")
+    if _is_conceptual_question(user_query):
+        concept_resp = _get_conceptual_explanation(user_query)
+        if concept_resp:
+            return {
+                "messages": [AIMessage(content=concept_resp)],
+                "response": concept_resp,
+                "active_diagram": active_diagram,
+                "generated_code": generated_code,
+                "ci_report": ci_report,
+                "gitops_result": gitops_result,
+            }
 
     # Numeric shortcuts from welcome menu
     is_opt_1 = q_lower in ("1", "1.", "opcao 1", "opção 1")
@@ -181,7 +321,13 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
 
     # 3. Semantic Layer & Business Models (Option 2)
     elif is_opt_2 or any(k in q_lower for k in ("semantic", "semântica", "semantica", "metrica", "métrica", "dimensao", "dimensão", "ontology", "ontologia", "negocio", "negócio")):
-        response_text = load_semantic_models()
+        models_summary = load_semantic_models()
+        response_text = (
+            "### 📦 Modelos Semânticos Registrados no Lakehouse\n\n"
+            "Aqui estão os modelos de domínio e ontologias de negócio configurados em YAML:\n\n"
+            f"{models_summary}\n\n"
+            "💡 *Dica: Você pode pedir 'desenhar diagrama do domínio sales_lakehouse' ou 'compilar query da métrica gross_revenue por canal'.*"
+        )
 
     # 4. ETL Pipeline Generation
     elif is_opt_4 or any(k in q_lower for k in ("etl", "pipeline", "pyspark", "sparksql", "bronze", "silver", "gold")):
@@ -372,7 +518,48 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                 logger.debug("Local LLM offline or unreachable (%s); using deterministic welcome.", e)
         return _deterministic_steward_execution(state)
 
-    # 4. Technical queries: LLM with tool calling
+    # 4. Conceptual and educational inquiries (answered without tool binding)
+    if _is_conceptual_question(user_query):
+        tailored = _get_conceptual_explanation(user_query)
+        if tailored:
+            return {
+                "messages": [AIMessage(content=tailored)],
+                "response": tailored,
+                "active_diagram": state.get("active_diagram"),
+                "generated_code": state.get("generated_code"),
+                "ci_report": state.get("ci_report"),
+                "gitops_result": state.get("gitops_result"),
+            }
+
+        if is_available:
+            try:
+                system_prompt = (
+                    "Você é o Databricks Steward Agent, um especialista em governança e engenharia de dados Lakehouse no Databricks. "
+                    "Responda de forma didática, completa, estruturada em tópicos e profissional em português. "
+                    "Destaque o conceito, seus benefícios, como funciona no Databricks e sugira como o usuário pode explorar essa capacidade."
+                )
+                llm_res = client.invoke([
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_query},
+                ])
+                _availability_cache[cache_key] = (True, now + 30.0)
+                reply = str(llm_res.content or "").strip()
+                if reply:
+                    return {
+                        "messages": [AIMessage(content=reply)],
+                        "response": reply,
+                        "active_diagram": state.get("active_diagram"),
+                        "generated_code": state.get("generated_code"),
+                        "ci_report": state.get("ci_report"),
+                        "gitops_result": state.get("gitops_result"),
+                    }
+            except Exception as e:  # noqa: BLE001
+                _availability_cache[cache_key] = (False, now + 10.0)
+                logger.debug("Local LLM conceptual call failed (%s); using deterministic router.", e)
+
+        return _deterministic_steward_execution(state)
+
+    # 5. Technical queries: LLM with tool calling
     if is_available:
         try:
             tools = get_langchain_tools()

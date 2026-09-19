@@ -27,7 +27,10 @@ def inspect_unity_catalog(catalog: str = "main", schema: str = "default") -> str
 
 def load_semantic_models(path: str | Path | None = None) -> str:
     """Load and format semantic domain ontologies from YAML files."""
-    models_path = Path(path) if path else settings.semantic_models_path
+    if path and Path(path).exists() and Path(path).is_dir():
+        models_path = Path(path)
+    else:
+        models_path = settings.semantic_models_path
     reg = SemanticRegistry(models_path)
     return reg.get_prompt_context()
 
@@ -195,8 +198,8 @@ def inspect_unity_catalog_tool(catalog: str = "main", schema_name: str = "defaul
 
 
 @tool
-def load_semantic_models_tool(path: str = "configs/semantic_models") -> str:
-    """Inspect registered business entities, dimensions, and metrics."""
+def load_semantic_models_tool(path: str | None = None) -> str:
+    """Inspect registered business entities, dimensions, and metrics in the semantic layer."""
     return load_semantic_models(path=path)
 
 
