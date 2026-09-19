@@ -37,7 +37,9 @@ class DatabricksCEClient:
         raw_host = host if host is not None else (settings.databricks_host or "")
         self.host = raw_host.split("?")[0].rstrip("/")
         self.token = token if token is not None else settings.databricks_token
-        self.warehouse_id = warehouse_id if warehouse_id is not None else settings.databricks_warehouse_id
+        self.warehouse_id = (
+            warehouse_id if warehouse_id is not None else settings.databricks_warehouse_id
+        )
         self.timeout = timeout
         self.client: WorkspaceClient | None = None
         self._init_error: str | None = None
@@ -61,7 +63,9 @@ class DatabricksCEClient:
     def verify_connection(self) -> dict[str, Any]:
         """Verify connection to Databricks workspace."""
         if not self.client:
-            raise DatabricksConnectionError(f"Databricks client not initialized: {self._init_error}")
+            raise DatabricksConnectionError(
+                f"Databricks client not initialized: {self._init_error}"
+            )
 
         try:
             user = self.client.current_user.me()
@@ -81,7 +85,9 @@ class DatabricksCEClient:
             self.client.workspace.mkdirs(path=remote_workspace_path)
             return {"status": "success", "path": remote_workspace_path}
         except Exception as e:
-            raise DatabricksClientError(f"Failed to create directory {remote_workspace_path}: {e}") from e
+            raise DatabricksClientError(
+                f"Failed to create directory {remote_workspace_path}: {e}"
+            ) from e
 
     def upload_file(
         self,
@@ -126,7 +132,9 @@ class DatabricksCEClient:
             )
             return {"status": "success", "path": remote_workspace_path}
         except Exception as e:
-            raise DatabricksClientError(f"Failed to upload file to {remote_workspace_path}: {e}") from e
+            raise DatabricksClientError(
+                f"Failed to upload file to {remote_workspace_path}: {e}"
+            ) from e
 
     def list_status(self, remote_workspace_path: str) -> list[dict[str, Any]]:
         """List objects in Databricks workspace path."""
@@ -152,7 +160,9 @@ class DatabricksCEClient:
             self.client.workspace.delete(path=remote_workspace_path, recursive=recursive)
             return {"status": "deleted", "path": remote_workspace_path}
         except Exception as e:
-            raise DatabricksClientError(f"Failed to delete path {remote_workspace_path}: {e}") from e
+            raise DatabricksClientError(
+                f"Failed to delete path {remote_workspace_path}: {e}"
+            ) from e
 
     def execute_query(self, sql_query: str, warehouse_id: str | None = None) -> dict[str, Any]:
         """Execute a SQL statement on a Databricks SQL warehouse."""

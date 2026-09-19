@@ -1,6 +1,5 @@
 """Unit and component integration tests for Mermaid diagram generation (Tier 1)."""
 
-
 from src.databricks.introspector import _build_mock_entities
 from src.semantic.models import (
     ColumnModel,

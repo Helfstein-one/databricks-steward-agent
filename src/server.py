@@ -141,16 +141,22 @@ def chat_completions(request: ChatCompletionRequest) -> Any:
         if not prompt:
             prompt = "Olá! Como posso ajudar na governança ou engenharia de dados do Databricks?"
 
-        result = graph.invoke({
-            "messages": [{"role": "user", "content": prompt}],
-            "user_query": prompt,
-        })
+        result = graph.invoke(
+            {
+                "messages": [{"role": "user", "content": prompt}],
+                "user_query": prompt,
+            }
+        )
 
         reply_text = str(result.get("response") or "")
         if not reply_text:
             messages = result.get("messages", [])
             for m in reversed(messages):
-                if hasattr(m, "content") and m.content and getattr(m, "type", "") in ("ai", "AIMessage"):
+                if (
+                    hasattr(m, "content")
+                    and m.content
+                    and getattr(m, "type", "") in ("ai", "AIMessage")
+                ):
                     reply_text = str(m.content)
                     break
                 elif isinstance(m, dict) and m.get("role") == "assistant":
@@ -166,6 +172,7 @@ def chat_completions(request: ChatCompletionRequest) -> Any:
 
         # Support streaming SSE if requested by client (e.g. Open WebUI)
         if request.stream:
+
             def _sse_generator():
                 first_chunk = {
                     "id": chunk_id,
@@ -239,7 +246,9 @@ def chat_completions(request: ChatCompletionRequest) -> Any:
 def get_semantic_models() -> dict[str, Any]:
     """Retrieve all loaded semantic domains and entities."""
     registry = SemanticRegistry(settings.semantic_models_path)
-    domains = [getattr(d, "domain", getattr(d, "name", "unknown")) for d in registry.domains.values()]
+    domains = [
+        getattr(d, "domain", getattr(d, "name", "unknown")) for d in registry.domains.values()
+    ]
     entities = [getattr(e, "name", "unknown") for e in registry.entities.values()]
     return {"domains": domains, "entities": entities}
 
@@ -285,4 +294,5 @@ def validate_code_ci(req: CiValidateRequest) -> dict[str, Any]:
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

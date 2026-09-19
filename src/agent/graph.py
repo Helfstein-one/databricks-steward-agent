@@ -36,13 +36,63 @@ _availability_cache: dict[tuple[str, str], tuple[bool, float]] = {}
 _resolved_models_cache: dict[str, str] = {}
 
 
+def get_effective_base_url(base_url: str) -> str:
+    """Check reachability of base_url; auto-fallback between container host and localhost."""
+    if not base_url:
+        return base_url
+
+    clean = base_url.rstrip("/")
+    probe = f"{clean}/models" if clean.endswith("/v1") else f"{clean}/v1/models"
+    try:
+        req = urllib.request.Request(probe, headers={"User-Agent": "Databricks-Steward/1.0"})
+        with urllib.request.urlopen(req, timeout=0.6):
+            return base_url
+    except Exception as err:  # noqa: BLE001
+        logger.debug("Base URL probe failed for %s: %s", probe, err)
+
+    # If failed and contains localhost, try container hosts (Podman/Docker)
+    if "localhost" in base_url or "127.0.0.1" in base_url:
+        for candidate in ("host.containers.internal", "host.docker.internal"):
+            cand_base = base_url.replace("localhost", candidate).replace("127.0.0.1", candidate)
+            c_clean = cand_base.rstrip("/")
+            c_probe = f"{c_clean}/models" if c_clean.endswith("/v1") else f"{c_clean}/v1/models"
+            try:
+                req = urllib.request.Request(
+                    c_probe, headers={"User-Agent": "Databricks-Steward/1.0"}
+                )
+                with urllib.request.urlopen(req, timeout=0.6):
+                    logger.info("Auto-detected container host endpoint: %s", cand_base)
+                    return cand_base
+            except Exception as err:  # noqa: BLE001
+                logger.debug("Candidate probe failed for %s: %s", c_probe, err)
+                continue
+
+    # If failed and contains container host, try localhost
+    if "host.containers.internal" in base_url or "host.docker.internal" in base_url:
+        cand_base = base_url.replace("host.containers.internal", "localhost").replace(
+            "host.docker.internal", "localhost"
+        )
+        c_clean = cand_base.rstrip("/")
+        c_probe = f"{c_clean}/models" if c_clean.endswith("/v1") else f"{c_clean}/v1/models"
+        try:
+            req = urllib.request.Request(c_probe, headers={"User-Agent": "Databricks-Steward/1.0"})
+            with urllib.request.urlopen(req, timeout=0.6):
+                return cand_base
+        except Exception as err:  # noqa: BLE001
+            logger.debug("Localhost probe fallback failed for %s: %s", c_probe, err)
+
+    return base_url
+
+
 def resolve_local_model(base_url: str, preferred_model: str) -> str:
     """Discover available models on OpenAI-compatible endpoint and select an active model."""
     if not base_url:
         return preferred_model
 
     # Preserve default development model on localhost to ensure deterministic unit tests
-    if preferred_model == "qwen2.5-coder:7b" and ("localhost" in base_url or "127.0.0.1" in base_url):
+    if preferred_model == "qwen2.5-coder:7b" and (
+        "localhost" in base_url or "127.0.0.1" in base_url
+    ):
         return preferred_model
 
     cached = _resolved_models_cache.get(base_url)
@@ -50,13 +100,19 @@ def resolve_local_model(base_url: str, preferred_model: str) -> str:
         return cached
 
     clean_base = base_url.rstrip("/")
-    models_endpoint = f"{clean_base}/models" if clean_base.endswith("/v1") else f"{clean_base}/v1/models"
+    models_endpoint = (
+        f"{clean_base}/models" if clean_base.endswith("/v1") else f"{clean_base}/v1/models"
+    )
 
     try:
-        req = urllib.request.Request(models_endpoint, headers={"User-Agent": "Databricks-Steward/1.0"})
+        req = urllib.request.Request(
+            models_endpoint, headers={"User-Agent": "Databricks-Steward/1.0"}
+        )
         with urllib.request.urlopen(req, timeout=1.5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            available_ids = [m.get("id") for m in data.get("data", []) if isinstance(m, dict) and "id" in m]
+            available_ids = [
+                m.get("id") for m in data.get("data", []) if isinstance(m, dict) and "id" in m
+            ]
             if not available_ids and "models" in data:
                 available_ids = [m.get("name") for m in data["models"] if isinstance(m, dict)]
 
@@ -69,7 +125,9 @@ def resolve_local_model(base_url: str, preferred_model: str) -> str:
                 chosen = next((p for p in priority if p in available_ids), available_ids[0])
                 logger.info(
                     "Model '%s' not found at %s. Auto-selected available model '%s'.",
-                    preferred_model, base_url, chosen,
+                    preferred_model,
+                    base_url,
+                    chosen,
                 )
                 _resolved_models_cache[base_url] = chosen
                 return chosen
@@ -87,14 +145,15 @@ def get_local_chat_client(
 ) -> ChatOpenAI:
     """Instantiate OpenAI-compatible local chat client (Ollama/vLLM) with automatic model resolution."""
     raw_base = base_url or settings.local_llm_base_url
+    effective_base = get_effective_base_url(raw_base)
     raw_model = model or settings.local_llm_model
-    effective_model = resolve_local_model(raw_base, raw_model)
+    effective_model = resolve_local_model(effective_base, raw_model)
     return ChatOpenAI(
-        base_url=raw_base,
+        base_url=effective_base,
         model=effective_model,
         api_key=api_key or settings.local_llm_api_key or "ollama",
         temperature=temperature if temperature is not None else settings.local_llm_temperature,
-        timeout=15.0,
+        timeout=60.0,
         max_retries=0,
     )
 
@@ -112,14 +171,29 @@ def _extract_query_text(messages: list[Any]) -> str:
 
 
 def _is_greeting(query: str) -> bool:
-    """Check if query is a conversational greeting."""
+    """Check if query is a conversational greeting or identity inquiry."""
     q = (query or "").strip().lower()
     if not q:
         return True
     pattern = r"^(ol[áa]|oi|bom\s+dia|boa\s+tarde|boa\s+noite|hello|hi|hey|sauda[çc][õo]es|e\s+a[íi]|tudo\s+bem|como\s+vai)[!?,.\s]*$"
     if re.match(pattern, q):
         return True
-    return bool(any(q.startswith(g) for g in ("olá", "ola", "oi", "hello", "hi")) and len(q.split()) <= 4)
+
+    # Identity and role inquiries (e.g. "o que você é?", "quem é você?", "o que você faz?")
+    identity_patterns = [
+        r"\b(o\s+que\s+(voc[eê]|vc)\s+[ée]|quem\s+[ée]\s+(voc[eê]|vc))\b",
+        r"\b(o\s+que\s+(voc[eê]|vc)\s+faz|qual\s+(o\s+)?seu\s+papel|qual\s+(o\s+)?seu\s+nome)\b",
+        r"\b(como\s+(voc[eê]|vc)\s+pode\s+me\s+ajudar|apresente-se|se\s+apresente)\b",
+        r"\b(fale|conte|diga)\s+(mais\s+)?sobre\s+(voc[eê]|vc)\b",
+        r"\b(quem\s+criou\s+(voc[eê]|vc)|de\s+onde\s+(voc[eê]|vc)\s+[ée])\b",
+        r"\b(what\s+are\s+you|who\s+are\s+you|what\s+do\s+you\s+do)\b",
+    ]
+    if any(re.search(p, q) for p in identity_patterns):
+        return True
+
+    return bool(
+        any(q.startswith(g) for g in ("olá", "ola", "oi", "hello", "hi")) and len(q.split()) <= 4
+    )
 
 
 def _is_title_request(query: str) -> bool:
@@ -127,10 +201,23 @@ def _is_title_request(query: str) -> bool:
     q = (query or "").lower()
     return (
         ("title" in q or "título" in q)
-        and any(w in q for w in ("generate", "gerar", "crie", "create", "summarize", "resumo", "3-5", "words", "palavras", "chat", "conversa"))
-    ) or (
-        "generate a concise" in q and "title" in q
-    )
+        and any(
+            w in q
+            for w in (
+                "generate",
+                "gerar",
+                "crie",
+                "create",
+                "summarize",
+                "resumo",
+                "3-5",
+                "words",
+                "palavras",
+                "chat",
+                "conversa",
+            )
+        )
+    ) or ("generate a concise" in q and "title" in q)
 
 
 def _is_conceptual_question(query: str) -> bool:
@@ -151,7 +238,9 @@ def _get_conceptual_explanation(query: str) -> str | None:
     q = (query or "").strip().lower()
 
     # 1. Camada Semântica
-    if any(k in q for k in ("semantica", "semântica", "semantic", "ontologia", "métrica", "metrica")):
+    if any(
+        k in q for k in ("semantica", "semântica", "semantic", "ontologia", "métrica", "metrica")
+    ):
         return (
             "### 🧠 O que é a Camada Semântica (Semantic Layer)?\n\n"
             "A **Camada Semântica** é uma camada de abstração intermediária entre as tabelas físicas do Lakehouse "
@@ -168,12 +257,13 @@ def _get_conceptual_explanation(query: str) -> str | None:
             "---\n\n"
             "### 📦 Camada Semântica no Databricks Steward Agent:\n"
             "Neste projeto, as ontologias são mantidas em arquivos **YAML** declarativos (`configs/semantic_models/`):\n"
+            "- **`databricks_medallion`**: Arquitetura Medalhão Lakehouse (`medallion_bronze_transactions`, `medallion_silver_transactions`, `medallion_gold_sales_kpis`, `medallion_gold_customer_kpis`) com métricas como `total_revenue`, `avg_transaction_value`, `gold_weighted_aov` e `total_vip_customers`.\n"
             "- **`corporate_credit`**: Gestão de carteira de crédito atacado (`facilities`, `borrowers`, `impairments`) com métricas como `utilization_rate` e `ecl_coverage_ratio`.\n"
             "- **`sales_lakehouse`**: E-commerce e varejo (`orders`, `order_items`, `customers`, `products`) com métricas como `gross_revenue` e `average_order_value`.\n\n"
             "💡 **Próximos passos práticos:**\n"
             "- Digite `2` ou *'ver modelos semânticos'* para listar entidades e métricas detalhadas.\n"
             "- Peça *'desenhar diagrama da camada semântica'* para ver o modelo ER visual!\n"
-            "- Peça *'compilar query da métrica gross_revenue por canal'* para gerar o SparkSQL."
+            "- Peça *'compilar query de métricas para medallion_silver_transactions'* para gerar o SparkSQL."
         )
 
     # 2. Unity Catalog
@@ -211,7 +301,19 @@ def _get_conceptual_explanation(query: str) -> str | None:
         )
 
     # 4. Esteira de CI de Boas Práticas
-    if any(k in q for k in ("ci", "esteira", "lint", "ruff", "sqlfluff", "qualidade", "anti-pattern", "antipattern")):
+    if any(
+        k in q
+        for k in (
+            "ci",
+            "esteira",
+            "lint",
+            "ruff",
+            "sqlfluff",
+            "qualidade",
+            "anti-pattern",
+            "antipattern",
+        )
+    ):
         return (
             "### 🛡️ O que é a Esteira de CI para Dados (Data Quality Gate)?\n\n"
             "A **Esteira de CI (Continuous Integration)** de dados do Databricks Steward Agent é um portão de qualidade mandatório que valida códigos antes de qualquer commit ou abertura de Pull Request.\n\n"
@@ -283,7 +385,21 @@ def _is_entity_modeling_query(query: str) -> bool:
         return False
 
     # Avoid stealing queries meant for ETL generation, CI, GitOps, or pure Lineage diagrams
-    if any(k in q for k in ("pipeline", "etl", "pyspark", "sparksql", "linhagem", "lineage", "fluxo", "gitops", "pull request", "pr ")):
+    if any(
+        k in q
+        for k in (
+            "pipeline",
+            "etl",
+            "pyspark",
+            "sparksql",
+            "linhagem",
+            "lineage",
+            "fluxo",
+            "gitops",
+            "pull request",
+            "pr ",
+        )
+    ):
         return False
 
     # If asking general conceptual question like "o que é modelagem?"
@@ -295,16 +411,37 @@ def _is_entity_modeling_query(query: str) -> bool:
         return False
 
     # If query is essentially just the entity name (e.g. "customers", "tabela customers", "tabela de clientes")
-    clean = re.sub(r"^(a\s+|o\s+|da\s+|do\s+|de\s+)?(tabela|table|entidade|entity)\s+(da\s+|do\s+|de\s+)?", "", q).strip()
+    clean = re.sub(
+        r"^(a\s+|o\s+|da\s+|do\s+|de\s+)?(tabela|table|entidade|entity)\s+(da\s+|do\s+|de\s+)?",
+        "",
+        q,
+    ).strip()
     clean = re.sub(r"^(de\s+|da\s+|do\s+)", "", clean).strip()
     if clean in ENTITY_ALIAS_MAP or clean == entity:
         return True
 
     modeling_keywords = (
-        "modelagem", "modelo", "schema", "esquema", "estrutura",
-        "colunas", "coluna", "campos", "kpis", "métricas", "metricas",
-        "detalhes", "modeling", "erd", "erdiagram", "tabela", "table",
-        "atributos", "campos da", "dados de", "dados da",
+        "modelagem",
+        "modelo",
+        "schema",
+        "esquema",
+        "estrutura",
+        "colunas",
+        "coluna",
+        "campos",
+        "kpis",
+        "métricas",
+        "metricas",
+        "detalhes",
+        "modeling",
+        "erd",
+        "erdiagram",
+        "tabela",
+        "table",
+        "atributos",
+        "campos da",
+        "dados de",
+        "dados da",
     )
     return any(k in q for k in modeling_keywords)
 
@@ -370,12 +507,48 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
     is_opt_6 = q_lower in ("6", "6.", "opcao 6", "opção 6")
 
     # 1. Mermaid Diagram & Relationships (Option 3)
-    if is_opt_3 or any(k in q_lower for k in ("diagram", "diagrama", "erd", "erdiagram", "mermaid", "lineage", "desenhar", "modelo visual", "relações", "relacoes", "relacionamento", "relacionamentos", "como estão relacionadas")):
+    if is_opt_3 or any(
+        k in q_lower
+        for k in (
+            "diagram",
+            "diagrama",
+            "erd",
+            "erdiagram",
+            "mermaid",
+            "lineage",
+            "fluxo",
+            "desenhar",
+            "modelo visual",
+            "relações",
+            "relacoes",
+            "relacionamento",
+            "relacionamentos",
+            "como estão relacionadas",
+        )
+    ):
+        reg = SemanticRegistry(settings.semantic_models_path)
+        has_medallion = reg.get_domain("databricks_medallion") is not None
         ent = _extract_entity_from_query(user_query)
-        if "lineage" in q_lower or "fluxo" in q_lower or "medallion" in q_lower:
-            diag = generate_diagram("lineage")
+        if (
+            "lineage" in q_lower
+            or "fluxo" in q_lower
+            or "medallion" in q_lower
+            or "medalhao" in q_lower
+            or "medalhão" in q_lower
+        ):
+            diag = generate_diagram(
+                "lineage", domain="databricks_medallion" if has_medallion else None
+            )
         elif ent:
             diag = generate_diagram("er", domain=ent)
+        elif ("sales" in q_lower or "vendas" in q_lower) and not has_medallion:
+            diag = generate_diagram("er", domain="sales_lakehouse")
+        elif (
+            "credit" in q_lower or "credito" in q_lower or "crédito" in q_lower
+        ) and not has_medallion:
+            diag = generate_diagram("er", domain="corporate_credit")
+        elif has_medallion:
+            diag = generate_diagram("er", domain="databricks_medallion")
         elif "sales" in q_lower or "vendas" in q_lower:
             diag = generate_diagram("er", domain="sales_lakehouse")
         else:
@@ -385,32 +558,73 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
         response_text = diag
 
     # 2. Databricks Unity Catalog Introspection (Option 1)
-    elif is_opt_1 or any(k in q_lower for k in ("catalog", "catálogo", "schema", "tabelas", "unity catalog", "introspect")):
+    elif is_opt_1 or any(
+        k in q_lower
+        for k in ("catalog", "catálogo", "schema", "tabelas", "unity catalog", "introspect")
+    ):
         response_text = inspect_unity_catalog()
 
     # 3. Semantic Layer & Business Models (Option 2)
-    elif is_opt_2 or any(k in q_lower for k in ("semantic", "semântica", "semantica", "metrica", "métrica", "dimensao", "dimensão", "ontology", "ontologia", "negocio", "negócio")):
+    elif is_opt_2 or any(
+        k in q_lower
+        for k in (
+            "semantic",
+            "semântica",
+            "semantica",
+            "metrica",
+            "métrica",
+            "dimensao",
+            "dimensão",
+            "ontology",
+            "ontologia",
+            "negocio",
+            "negócio",
+        )
+    ):
         models_summary = load_semantic_models()
+        reg = SemanticRegistry(settings.semantic_models_path)
+        has_medallion = reg.get_domain("databricks_medallion") is not None
+        hint = (
+            "💡 *Dica: Você pode pedir 'qual a modelagem das transações', 'desenhar diagrama' ou 'compilar query de métricas para medallion_silver_transactions'.*"
+            if has_medallion
+            else "💡 *Dica: Você pode pedir 'desenhar diagrama do domínio sales_lakehouse' ou 'compilar query da métrica gross_revenue por canal'.*"
+        )
         response_text = (
             "### 📦 Modelos Semânticos Registrados no Lakehouse\n\n"
             "Aqui estão os modelos de domínio e ontologias de negócio configurados em YAML:\n\n"
             f"{models_summary}\n\n"
-            "💡 *Dica: Você pode pedir 'desenhar diagrama do domínio sales_lakehouse' ou 'compilar query da métrica gross_revenue por canal'.*"
+            f"{hint}"
         )
 
     # 4. ETL Pipeline Generation
-    elif is_opt_4 or any(k in q_lower for k in ("etl", "pipeline", "pyspark", "sparksql", "bronze", "silver", "gold")):
+    elif is_opt_4 or any(
+        k in q_lower for k in ("etl", "pipeline", "pyspark", "sparksql", "bronze", "silver", "gold")
+    ):
         layer = "gold" if "gold" in q_lower else "bronze" if "bronze" in q_lower else "silver"
-        entity_name = "facilities"
-        if "sales" in q_lower or "order" in q_lower or "venda" in q_lower:
+        reg = SemanticRegistry(settings.semantic_models_path)
+        has_medallion = reg.get_domain("databricks_medallion") is not None
+        ent = _extract_entity_from_query(user_query)
+
+        if ent:
+            entity_name = ent
+        elif has_medallion:
+            if layer == "bronze":
+                entity_name = "medallion_bronze_transactions"
+            elif layer == "gold":
+                entity_name = "medallion_gold_sales_kpis"
+            else:
+                entity_name = "medallion_silver_transactions"
+        elif "sales" in q_lower or "order" in q_lower or "venda" in q_lower:
             entity_name = "orders"
         elif "transaction" in q_lower or "transac" in q_lower:
             entity_name = "silver_transactions" if layer == "silver" else "bronze_raw_transactions"
+        else:
+            entity_name = "facilities"
 
-        reg = SemanticRegistry(settings.semantic_models_path)
         ent_obj = reg.get_entity(entity_name)
         if not ent_obj:
             from src.databricks.introspector import _build_mock_entities
+
             mock_ents = {e.name: e for e in _build_mock_entities()}
             ent_obj = mock_ents.get(entity_name)
 
@@ -431,13 +645,25 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
             response_text = generate_etl_pipeline(entity_name, layer=layer)
 
     # 5. Data Best Practices CI Quality Gate
-    elif is_opt_5 or any(k in q_lower for k in ("ci", "esteira", "lint", "ruff", "sqlfluff", "anti-pattern", "validar")):
+    elif is_opt_5 or any(
+        k in q_lower
+        for k in ("ci", "esteira", "lint", "ruff", "sqlfluff", "anti-pattern", "validar")
+    ):
         py_code = generated_code.get("pyspark") if generated_code else None
         sql_code = generated_code.get("sparksql") if generated_code else None
 
         if not py_code or not sql_code:
-            py_code = "def process(df):\n    return df.filter(df['active'] == True)\n"
-            sql_code = "SELECT order_id, total_amount FROM main.sales.orders;"
+            reg = SemanticRegistry(settings.semantic_models_path)
+            has_medallion = reg.get_domain("databricks_medallion") is not None
+            if has_medallion:
+                py_code = (
+                    "def process(df):\n"
+                    "    return df.filter(df['status'] == 'COMPLETED').dropDuplicates(['transaction_id'])\n"
+                )
+                sql_code = "SELECT transaction_id, user_id, amount FROM workspace.default.medallion_silver_transactions;"
+            else:
+                py_code = "def process(df):\n    return df.filter(df['active'] == True)\n"
+                sql_code = "SELECT order_id, total_amount FROM main.sales.orders;"
 
         report = run_ci_pipeline(pyspark_code=py_code, sparksql_code=sql_code)
         ci_report = report
@@ -449,13 +675,27 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
         sql_code = generated_code.get("sparksql") if generated_code else None
 
         if not py_code or not sql_code:
-            py_code = "def process(df):\n    return df.filter(df['active'] == True)\n"
-            sql_code = "SELECT order_id, total_amount FROM main.sales.orders;"
+            reg = SemanticRegistry(settings.semantic_models_path)
+            has_medallion = reg.get_domain("databricks_medallion") is not None
+            if has_medallion:
+                py_code = (
+                    "def process(df):\n"
+                    "    return df.filter(df['status'] == 'COMPLETED').dropDuplicates(['transaction_id'])\n"
+                )
+                sql_code = "SELECT transaction_id, user_id, amount FROM workspace.default.medallion_silver_transactions;"
+            else:
+                py_code = "def process(df):\n    return df.filter(df['active'] == True)\n"
+                sql_code = "SELECT order_id, total_amount FROM main.sales.orders;"
 
         report = ci_report or run_ci_pipeline(pyspark_code=py_code, sparksql_code=sql_code)
         ci_report = report
 
-        product_name = generated_code.get("table_name", "corporate-credit-kpis") if generated_code else "corporate-credit-kpis"
+        reg = SemanticRegistry(settings.semantic_models_path)
+        has_medallion = reg.get_domain("databricks_medallion") is not None
+        default_prod = "medallion-silver-transactions" if has_medallion else "corporate-credit-kpis"
+        product_name = (
+            generated_code.get("table_name", default_prod) if generated_code else default_prod
+        )
         product_slug = re.sub(r"[^a-zA-Z0-9_-]", "-", product_name.replace(".", "-")).lower()
 
         files = {
@@ -485,17 +725,42 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
 
     # Greeting / Default assistance menu
     else:
-        response_text = (
-            "Olá! Sou o **Databricks Steward Agent**, seu copiloto de governança e engenharia de dados Lakehouse.\n\n"
-            "Posso ajudar você com:\n"
-            "1. **Unity Catalog Introspection**: Descobrir catálogos, schemas e tabelas.\n"
-            "2. **Semantic Modeling**: Consultar dimensões, métricas de negócio e relacionamentos.\n"
-            "3. **Mermaid.js Diagrams**: Gerar diagramas conceituais (`erDiagram`) e fluxos medalhão.\n"
-            "4. **Modular ETL Engineering**: Produzir pipelines idempotentes em PySpark e SparkSQL (Bronze, Silver, Gold).\n"
-            "5. **CI Quality Gate**: Validar código com Ruff, SQLFluff (sparksql) e detecção de anti-patterns.\n"
-            "6. **Automated GitOps**: Criar feature branches, Conventional Commits e abrir Pull Requests no GitHub.\n\n"
-            "💡 *Dica: Digite o número da opção (ex: `1`, `3`, `4`) ou descreva sua solicitação em linguagem natural!*"
+        is_identity = any(
+            re.search(p, q_lower)
+            for p in (
+                r"\b(o\s+que\s+(voc[eê]|vc)\s+[ée]|quem\s+[ée]\s+(voc[eê]|vc))\b",
+                r"\b(o\s+que\s+(voc[eê]|vc)\s+faz|qual\s+(o\s+)?seu\s+papel|qual\s+(o\s+)?seu\s+nome)\b",
+                r"\b(como\s+(voc[eê]|vc)\s+pode\s+me\s+ajudar|apresente-se|se\s+apresente)\b",
+                r"\b(fale|conte|diga)\s+(mais\s+)?sobre\s+(voc[eê]|vc)\b",
+                r"\b(quem\s+criou\s+(voc[eê]|vc)|de\s+onde\s+(voc[eê]|vc)\s+[ée])\b",
+                r"\b(what\s+are\s+you|who\s+are\s+you|what\s+do\s+you\s+do)\b",
+            )
         )
+        if is_identity:
+            response_text = (
+                "Eu sou o **Databricks Steward Agent**, um assistente inteligente especializado em governança de dados, "
+                "modelagem semântica e automação de engenharia de dados no ecossistema Databricks Lakehouse.\n\n"
+                "Meu objetivo é ajudar engenheiros e analistas de dados em:\n"
+                "1. **Unity Catalog Introspection**: Descobrir e auditar tabelas, schemas e colunas físicas.\n"
+                "2. **Camada Semântica Declarativa**: Modelar entidades de negócio, métricas padronizadas e relacionamentos em YAML.\n"
+                "3. **Diagramas Mermaid.js**: Gerar diagramas conceituais (ERD Crow's foot) e fluxos de linhagem medalhão.\n"
+                "4. **Pipelines ETL Modulares**: Produzir código PySpark e SparkSQL idempotente (Bronze, Silver, Gold).\n"
+                "5. **Esteira de Qualidade de Dados (CI)**: Validar conformidade com Ruff, SQLFluff e detectores de anti-patterns.\n"
+                "6. **Automated GitOps**: Abrir feature branches, Conventional Commits e Pull Requests no GitHub.\n\n"
+                "Como posso ajudar você hoje no seu Lakehouse?"
+            )
+        else:
+            response_text = (
+                "Olá! Sou o **Databricks Steward Agent**, seu copiloto de governança e engenharia de dados Lakehouse.\n\n"
+                "Posso ajudar você com:\n"
+                "1. **Unity Catalog Introspection**: Descobrir catálogos, schemas e tabelas.\n"
+                "2. **Semantic Modeling**: Consultar dimensões, métricas de negócio e relacionamentos.\n"
+                "3. **Mermaid.js Diagrams**: Gerar diagramas conceituais (`erDiagram`) e fluxos medalhão.\n"
+                "4. **Modular ETL Engineering**: Produzir pipelines idempotentes em PySpark e SparkSQL (Bronze, Silver, Gold).\n"
+                "5. **CI Quality Gate**: Validar código com Ruff, SQLFluff (sparksql) e detecção de anti-patterns.\n"
+                "6. **Automated GitOps**: Criar feature branches, Conventional Commits e abrir Pull Requests no GitHub.\n\n"
+                "💡 *Dica: Digite o número da opção (ex: `1`, `3`, `4`) ou descreva sua solicitação em linguagem natural!*"
+            )
 
     return {
         "messages": [AIMessage(content=response_text)],
@@ -530,9 +795,32 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
         }
 
     # 2. Direct numeric menu shortcuts
-    if q_lower in ("1", "1.", "opcao 1", "opção 1", "2", "2.", "opcao 2", "opção 2",
-                   "3", "3.", "opcao 3", "opção 3", "4", "4.", "opcao 4", "opção 4",
-                   "5", "5.", "opcao 5", "opção 5", "6", "6.", "opcao 6", "opção 6"):
+    if q_lower in (
+        "1",
+        "1.",
+        "opcao 1",
+        "opção 1",
+        "2",
+        "2.",
+        "opcao 2",
+        "opção 2",
+        "3",
+        "3.",
+        "opcao 3",
+        "opção 3",
+        "4",
+        "4.",
+        "opcao 4",
+        "opção 4",
+        "5",
+        "5.",
+        "opcao 5",
+        "opção 5",
+        "6",
+        "6.",
+        "opcao 6",
+        "opção 6",
+    ):
         return _deterministic_steward_execution(state)
 
     now = time.time()
@@ -560,16 +848,22 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                     "6. GitOps: automação de branch, commit e Pull Requests no GitHub\n"
                     "Oriente o usuário a escolher um número (1 a 6) ou descrever sua necessidade."
                 )
-                llm_res = client.invoke([
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_query or "olá"},
-                ])
+                llm_res = client.invoke(
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_query or "olá"},
+                    ]
+                )
                 _availability_cache[cache_key] = (True, now + 30.0)
                 reply = str(llm_res.content or "").strip()
                 if reply.startswith("{") and reply.endswith("}"):
                     try:
                         p = json.loads(reply)
-                        if isinstance(p, dict) and "parameters" in p and "message" in p["parameters"]:
+                        if (
+                            isinstance(p, dict)
+                            and "parameters" in p
+                            and "message" in p["parameters"]
+                        ):
                             reply = str(p["parameters"]["message"])
                     except Exception as err:  # noqa: BLE001
                         logger.debug("Failed parsing JSON greeting reply: %s", err)
@@ -584,7 +878,9 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                     }
             except Exception as e:  # noqa: BLE001
                 _availability_cache[cache_key] = (False, now + 10.0)
-                logger.debug("Local LLM offline or unreachable (%s); using deterministic welcome.", e)
+                logger.debug(
+                    "Local LLM offline or unreachable (%s); using deterministic welcome.", e
+                )
         return _deterministic_steward_execution(state)
 
     # 4. Conceptual and educational inquiries (answered without tool binding)
@@ -607,10 +903,12 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                     "Responda de forma didática, completa, estruturada em tópicos e profissional em português. "
                     "Destaque o conceito, seus benefícios, como funciona no Databricks e sugira como o usuário pode explorar essa capacidade."
                 )
-                llm_res = client.invoke([
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_query},
-                ])
+                llm_res = client.invoke(
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_query},
+                    ]
+                )
                 _availability_cache[cache_key] = (True, now + 30.0)
                 reply = str(llm_res.content or "").strip()
                 if reply:
@@ -624,7 +922,9 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                     }
             except Exception as e:  # noqa: BLE001
                 _availability_cache[cache_key] = (False, now + 10.0)
-                logger.debug("Local LLM conceptual call failed (%s); using deterministic router.", e)
+                logger.debug(
+                    "Local LLM conceptual call failed (%s); using deterministic router.", e
+                )
 
         return _deterministic_steward_execution(state)
 
@@ -692,7 +992,11 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                 if content_str.startswith("{") and content_str.endswith("}"):
                     try:
                         p = json.loads(content_str)
-                        if isinstance(p, dict) and "parameters" in p and "message" in p["parameters"]:
+                        if (
+                            isinstance(p, dict)
+                            and "parameters" in p
+                            and "message" in p["parameters"]
+                        ):
                             content_str = str(p["parameters"]["message"])
                     except Exception as err:  # noqa: BLE001
                         logger.debug("Failed parsing JSON content reply: %s", err)
@@ -706,7 +1010,9 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                 }
         except Exception as e:  # noqa: BLE001
             _availability_cache[cache_key] = (False, now + 10.0)
-            logger.debug("Local LLM offline or unreachable (%s); using deterministic steward router.", e)
+            logger.debug(
+                "Local LLM offline or unreachable (%s); using deterministic steward router.", e
+            )
 
     # 5. Deterministic fallback
     return _deterministic_steward_execution(state)

@@ -74,7 +74,9 @@ class CIRunner:
             anti_patterns.extend(spark_anti)
 
             # Run Ruff linter via subprocess
-            with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False, encoding="utf-8") as tmp:
+            with tempfile.NamedTemporaryFile(
+                suffix=".py", mode="w", delete=False, encoding="utf-8"
+            ) as tmp:
                 tmp.write(pyspark_code)
                 tmp_path = tmp.name
 
@@ -119,7 +121,7 @@ class CIRunner:
                                     line=row,
                                     message=msg,
                                     severity=sev,
-                                    )
+                                )
                             )
                     except json.JSONDecodeError:
                         if proc.returncode != 0:

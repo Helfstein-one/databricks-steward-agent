@@ -45,7 +45,11 @@ class DataAntiPatternDetector:
                     has_limit = False
                     curr = node.func.value
                     while isinstance(curr, ast.Call):
-                        if isinstance(curr.func, ast.Attribute) and curr.func.attr in ("limit", "take", "head"):
+                        if isinstance(curr.func, ast.Attribute) and curr.func.attr in (
+                            "limit",
+                            "take",
+                            "head",
+                        ):
                             has_limit = True
                             break
                         if isinstance(curr.func, ast.Attribute):
@@ -90,7 +94,11 @@ class DataAntiPatternDetector:
                     has_limit = False
                     curr = node.func.value
                     while isinstance(curr, ast.Call):
-                        if isinstance(curr.func, ast.Attribute) and curr.func.attr in ("limit", "take", "head"):
+                        if isinstance(curr.func, ast.Attribute) and curr.func.attr in (
+                            "limit",
+                            "take",
+                            "head",
+                        ):
                             has_limit = True
                             break
                         if isinstance(curr.func, ast.Attribute):
@@ -122,7 +130,9 @@ class DataAntiPatternDetector:
             return "".join("\n" if c == "\n" else " " for c in m.group(0))
 
         sql_clean_comments = re.sub(r"--[^\n]*", _mask_comment, sql)
-        sql_clean_comments = re.sub(r"/\*.*?\*/", _mask_comment, sql_clean_comments, flags=re.DOTALL)
+        sql_clean_comments = re.sub(
+            r"/\*.*?\*/", _mask_comment, sql_clean_comments, flags=re.DOTALL
+        )
 
         # Rule 1: CROSS JOIN (supports single-line and multiline)
         for match in re.finditer(r"\bCROSS\s+JOIN\b", sql_clean_comments, re.IGNORECASE):
@@ -150,7 +160,9 @@ class DataAntiPatternDetector:
 
         # Rule 3: DELETE or UPDATE without WHERE
         sql_clean_single = re.sub(r"--.*$", "", sql, flags=re.MULTILINE)
-        if re.search(r"\bDELETE\s+FROM\b", sql_clean_comments, re.IGNORECASE) and not re.search(r"\bWHERE\b", sql_clean_single, re.IGNORECASE):
+        if re.search(r"\bDELETE\s+FROM\b", sql_clean_comments, re.IGNORECASE) and not re.search(
+            r"\bWHERE\b", sql_clean_single, re.IGNORECASE
+        ):
             violations.append(
                 Violation(
                     rule="SQL-ANTI-003",

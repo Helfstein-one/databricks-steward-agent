@@ -185,7 +185,9 @@ def introspect_catalog(
         except Exception:  # noqa: BLE001
             available_cats = [c.name for c in client.client.catalogs.list() if c.name != "system"]
             if available_cats:
-                effective_catalog = "workspace" if "workspace" in available_cats else available_cats[0]
+                effective_catalog = (
+                    "workspace" if "workspace" in available_cats else available_cats[0]
+                )
                 logger.info(
                     "Catalog '%s' not found. Auto-selected available catalog '%s'.",
                     catalog,
@@ -197,9 +199,13 @@ def introspect_catalog(
                     if s.name != "information_schema"
                 ]
                 if available_schemas:
-                    effective_schema = "default" if "default" in available_schemas else available_schemas[0]
+                    effective_schema = (
+                        "default" if "default" in available_schemas else available_schemas[0]
+                    )
 
-        tables_iter = client.client.tables.list(catalog_name=effective_catalog, schema_name=effective_schema)
+        tables_iter = client.client.tables.list(
+            catalog_name=effective_catalog, schema_name=effective_schema
+        )
         entities: list[EntityModel] = []
 
         for table in tables_iter:
@@ -213,9 +219,7 @@ def introspect_catalog(
             for col in raw_columns:
                 col_name = getattr(col, "name", "")
                 type_name = (
-                    str(getattr(col, "type_name", "string"))
-                    .lower()
-                    .replace("columntypename.", "")
+                    str(getattr(col, "type_name", "string")).lower().replace("columntypename.", "")
                 )
                 nullable = bool(getattr(col, "nullable", True))
                 cols.append(ColumnModel(name=col_name, type=type_name, nullable=nullable))
@@ -259,7 +263,9 @@ def introspect_catalog(
             entities.append(entity)
 
         if not entities:
-            logger.warning(f"No tables discovered in {effective_catalog}.{effective_schema}. Using mock entities.")
+            logger.warning(
+                f"No tables discovered in {effective_catalog}.{effective_schema}. Using mock entities."
+            )
             return _build_mock_entities(catalog=effective_catalog, schema=effective_schema)
 
         return entities

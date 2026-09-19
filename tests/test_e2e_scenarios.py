@@ -1,6 +1,5 @@
 """Tier 4 Real-World End-to-End Application Scenarios for Databricks Steward Agent."""
 
-
 from open_webui_pipe import Pipe
 from src.ci.runner import run_ci_pipeline
 from src.databricks.client import DatabricksCEClient
@@ -32,10 +31,12 @@ def test_e2e_scenario_full_lifecycle(sample_yaml_dir, mock_github):
 
     # 1. User prompts Open WebUI
     pipe = Pipe()
-    pipe_response = pipe.pipe({
-        "messages": [{"role": "user", "content": "Desenhar modelo de diagramas e arquitetura"}],
-        "stream": False,
-    })
+    pipe_response = pipe.pipe(
+        {
+            "messages": [{"role": "user", "content": "Desenhar modelo de diagramas e arquitetura"}],
+            "stream": False,
+        }
+    )
     assert "```mermaid" in pipe_response
     assert "erDiagram" in pipe_response
 

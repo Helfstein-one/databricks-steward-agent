@@ -177,7 +177,9 @@ class SemanticRegistry:
         result = self.find_metric_owner(name, preferred_entity=entity_name)
         return result[0] if result else None
 
-    def find_metric_owner(self, metric_name: str, preferred_entity: str | None = None) -> tuple[MetricModel, str] | None:
+    def find_metric_owner(
+        self, metric_name: str, preferred_entity: str | None = None
+    ) -> tuple[MetricModel, str] | None:
         """Find metric and the entity that owns it."""
         m_lower = metric_name.lower()
 
@@ -189,7 +191,9 @@ class SemanticRegistry:
             entity = self.get_entity(preferred_entity)
             if entity:
                 for m in entity.metrics:
-                    if m.name.lower() == target_name or target_name in [s.lower() for s in m.synonyms]:
+                    if m.name.lower() == target_name or target_name in [
+                        s.lower() for s in m.synonyms
+                    ]:
                         return m, entity.name
 
         for entity in self.entities.values():
@@ -203,12 +207,16 @@ class SemanticRegistry:
 
         return None
 
-    def get_dimension(self, dimension_name: str, entity_name: str | None = None) -> DimensionModel | None:
+    def get_dimension(
+        self, dimension_name: str, entity_name: str | None = None
+    ) -> DimensionModel | None:
         """Retrieve dimension by name or synonym."""
         result = self.find_dimension_owner(dimension_name, preferred_entity=entity_name)
         return result[0] if result else None
 
-    def find_dimension_owner(self, dimension_name: str, preferred_entity: str | None = None) -> tuple[DimensionModel, str] | None:
+    def find_dimension_owner(
+        self, dimension_name: str, preferred_entity: str | None = None
+    ) -> tuple[DimensionModel, str] | None:
         """Find dimension and the entity that owns it."""
         dim_lower = dimension_name.lower()
 
@@ -220,12 +228,20 @@ class SemanticRegistry:
             entity = self.get_entity(preferred_entity)
             if entity:
                 for dim in entity.dimensions:
-                    if dim.name.lower() == target_name or dim.column.lower() == target_name or target_name in [s.lower() for s in dim.synonyms]:
+                    if (
+                        dim.name.lower() == target_name
+                        or dim.column.lower() == target_name
+                        or target_name in [s.lower() for s in dim.synonyms]
+                    ):
                         return dim, entity.name
 
         for entity in self.entities.values():
             for dim in entity.dimensions:
-                if dim.name.lower() == target_name or dim.column.lower() == target_name or target_name in [s.lower() for s in dim.synonyms]:
+                if (
+                    dim.name.lower() == target_name
+                    or dim.column.lower() == target_name
+                    or target_name in [s.lower() for s in dim.synonyms]
+                ):
                     return dim, entity.name
 
         return None
@@ -285,7 +301,12 @@ class SemanticRegistry:
 
     def get_prompt_context(self, domain_name: str | None = None) -> str:
         """Format semantic models into natural language string for system prompt injection."""
-        domains_to_format = [self.get_domain(domain_name)] if domain_name and self.get_domain(domain_name) else list(self.domains.values())
+        if domain_name and self.get_domain(domain_name):
+            domains_to_format = [self.get_domain(domain_name)]
+        else:
+            all_doms = list(self.domains.values())
+            all_doms.sort(key=lambda d: 0 if d.domain == "databricks_medallion" else 1)
+            domains_to_format = all_doms
 
         if not domains_to_format:
             return "No semantic models registered."

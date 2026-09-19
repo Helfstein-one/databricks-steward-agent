@@ -67,17 +67,44 @@ ENTITY_ALIAS_MAP: dict[str, str] = {
     "provisoes": "impairments",
     "provisões": "impairments",
     "perdas": "impairments",
-    # Lakehouse sample and workspace tables
-    "silver_transactions": "silver_transactions",
-    "bronze_raw_transactions": "bronze_raw_transactions",
-    "gold_risk_metrics": "gold_risk_metrics",
-    "transactions": "silver_transactions",
-    "transações": "silver_transactions",
-    "transacoes": "silver_transactions",
+    # Lakehouse Medallion tables
     "medallion_bronze_transactions": "medallion_bronze_transactions",
+    "bronze_transactions": "medallion_bronze_transactions",
+    "bronze_raw_transactions": "medallion_bronze_transactions",
+    "transacoes_bronze": "medallion_bronze_transactions",
+    "transações_bronze": "medallion_bronze_transactions",
+    "transações bronze": "medallion_bronze_transactions",
+    "transacoes bronze": "medallion_bronze_transactions",
+    "raw_transactions": "medallion_bronze_transactions",
+    "bronze": "medallion_bronze_transactions",
     "medallion_silver_transactions": "medallion_silver_transactions",
+    "silver_transactions": "medallion_silver_transactions",
+    "transacoes_silver": "medallion_silver_transactions",
+    "transações_silver": "medallion_silver_transactions",
+    "transações silver": "medallion_silver_transactions",
+    "transacoes silver": "medallion_silver_transactions",
+    "transactions": "medallion_silver_transactions",
+    "transações": "medallion_silver_transactions",
+    "transacoes": "medallion_silver_transactions",
+    "transação": "medallion_silver_transactions",
+    "transacao": "medallion_silver_transactions",
+    "silver": "medallion_silver_transactions",
     "medallion_gold_sales_kpis": "medallion_gold_sales_kpis",
+    "gold_sales_kpis": "medallion_gold_sales_kpis",
+    "gold_sales": "medallion_gold_sales_kpis",
+    "sales_kpis": "medallion_gold_sales_kpis",
+    "kpis_vendas": "medallion_gold_sales_kpis",
+    "kpis de vendas": "medallion_gold_sales_kpis",
+    "vendas_gold": "medallion_gold_sales_kpis",
+    "vendas gold": "medallion_gold_sales_kpis",
     "medallion_gold_customer_kpis": "medallion_gold_customer_kpis",
+    "gold_customer_kpis": "medallion_gold_customer_kpis",
+    "gold_customers": "medallion_gold_customer_kpis",
+    "customer_kpis": "medallion_gold_customer_kpis",
+    "kpis_clientes": "medallion_gold_customer_kpis",
+    "kpis de clientes": "medallion_gold_customer_kpis",
+    "clientes_gold": "medallion_gold_customer_kpis",
+    "clientes gold": "medallion_gold_customer_kpis",
 }
 
 DOMAIN_ALIAS_MAP: dict[str, str] = {
@@ -92,23 +119,32 @@ DOMAIN_ALIAS_MAP: dict[str, str] = {
     "corporate_credit": "corporate_credit",
     "corporate": "corporate_credit",
     "wholesale": "corporate_credit",
+    "medallion": "databricks_medallion",
+    "medalhão": "databricks_medallion",
+    "medalhao": "databricks_medallion",
+    "databricks": "databricks_medallion",
+    "databricks_medallion": "databricks_medallion",
+    "lakehouse": "databricks_medallion",
+    "workspace": "databricks_medallion",
 }
 
 
-def inspect_unity_catalog(catalog: str = "main", schema: str = "default") -> str:
+def inspect_unity_catalog(catalog: str | None = None, schema: str | None = None) -> str:
     """Introspect Databricks Unity Catalog tables, columns, and constraints."""
     from src.databricks.client import DatabricksCEClient
 
     client = DatabricksCEClient()
+    cat_to_use = catalog or settings.databricks_default_catalog or "workspace"
+    sch_to_use = schema or settings.databricks_default_schema or "default"
     mode_str = (
         "🟢 Conectado ao Databricks Real via SDK"
         if client.is_configured()
         else "🟡 Modo Demonstração Offline (defina DATABRICKS_HOST e DATABRICKS_TOKEN no .env para conectar ao seu workspace)"
     )
 
-    entities = introspect_catalog(catalog=catalog, schema=schema, client=client)
-    actual_cat = entities[0].catalog if entities else catalog
-    actual_sch = entities[0].schema_name if entities else schema
+    entities = introspect_catalog(catalog=cat_to_use, schema=sch_to_use, client=client)
+    actual_cat = entities[0].catalog if entities else cat_to_use
+    actual_sch = entities[0].schema_name if entities else sch_to_use
     lines = [
         f"Discovered {len(entities)} entities in {actual_cat}.{actual_sch} (*{mode_str}*):",
     ]
@@ -118,7 +154,7 @@ def inspect_unity_catalog(catalog: str = "main", schema: str = "default") -> str
 
     lines.append(
         "\n💡 *Nota: Estas são as tabelas físicas inspecionadas no Unity Catalog. "
-        "Para ver os modelos de dados e Data Products da Camada Semântica (ex: `customers`, `facilities`), digite `2` ou peça a modelagem da tabela.*"
+        "Para ver os modelos de dados e Data Products da Camada Semântica (ex: `medallion_silver_transactions`, `medallion_gold_sales_kpis`), digite `2` ou peça a modelagem da tabela.*"
     )
     return "\n".join(lines)
 
@@ -203,7 +239,12 @@ def format_entity_modeling(entity_name: str) -> str:
         real_ents = {e.name.lower(): e for e in introspect_catalog()}
         e_obj = real_ents.get(target_name.lower())
         if e_obj:
-            cols = "\n".join([f"| `{c.name}` | `{c.type.upper()}` | {c.description or 'Coluna de dados'} |" for c in e_obj.columns])
+            cols = "\n".join(
+                [
+                    f"| `{c.name}` | `{c.type.upper()}` | {c.description or 'Coluna de dados'} |"
+                    for c in e_obj.columns
+                ]
+            )
             return (
                 f"### 📐 Modelagem da Tabela Lakehouse: `{e_obj.name}`\n\n"
                 f"- **Tabela Física:** `{e_obj.catalog}.{e_obj.schema_name}.{e_obj.name}`\n"
@@ -236,7 +277,15 @@ def format_entity_modeling(entity_name: str) -> str:
             desc = f"Identificador de relacionamento ({d.name})"
         elif d.name.endswith("_date") or d.name.endswith("_at"):
             desc = f"Data / timestamp temporal ({d.name})"
-        elif d.name in ("status", "segment", "country", "channel", "category", "currency", "product_type"):
+        elif d.name in (
+            "status",
+            "segment",
+            "country",
+            "channel",
+            "category",
+            "currency",
+            "product_type",
+        ):
             desc = f"Atributo categórico de negócio ({d.name})"
         else:
             desc = f"Coluna dimensional {d.name}"
@@ -253,14 +302,23 @@ def format_entity_modeling(entity_name: str) -> str:
         metrics_section = "_Nenhuma métrica agregada registrada diretamente nesta entidade._"
 
     all_rels = reg.list_relationships(domain_name)
-    relevant_rels = [r for r in all_rels if r.from_entity == entity.name or r.to_entity == entity.name]
+    relevant_rels = [
+        r for r in all_rels if r.from_entity == entity.name or r.to_entity == entity.name
+    ]
     if relevant_rels:
-        rel_lines = [f"- `{r.from_entity}.{r.from_column}` → `{r.to_entity}.{r.to_column}` (`{r.type}`)" for r in relevant_rels]
+        rel_lines = [
+            f"- `{r.from_entity}.{r.from_column}` → `{r.to_entity}.{r.to_column}` (`{r.type}`)"
+            for r in relevant_rels
+        ]
         rels_section = "\n".join(rel_lines)
     else:
         rels_section = "_Entidade sem chaves estrangeiras diretas registradas._"
 
-    related_names = set([entity.name] + [r.from_entity for r in relevant_rels] + [r.to_entity for r in relevant_rels])
+    related_names = set(
+        [entity.name]
+        + [r.from_entity for r in relevant_rels]
+        + [r.to_entity for r in relevant_rels]
+    )
     related_entities = [reg.get_entity(n) for n in related_names if reg.get_entity(n)]
     diag = generate_er_diagram(related_entities, relevant_rels)
 
@@ -319,14 +377,26 @@ def generate_diagram(diagram_type: str = "er", domain: str | None = None) -> str
                         d_name = d_k
                         break
                 all_rels = reg.list_relationships(d_name)
-                relationships = [r for r in all_rels if r.from_entity == ent.name or r.to_entity == ent.name]
-                related_names = set([ent.name] + [r.from_entity for r in relationships] + [r.to_entity for r in relationships])
+                relationships = [
+                    r for r in all_rels if r.from_entity == ent.name or r.to_entity == ent.name
+                ]
+                related_names = set(
+                    [ent.name]
+                    + [r.from_entity for r in relationships]
+                    + [r.to_entity for r in relationships]
+                )
                 entities = [reg.get_entity(n) for n in related_names if reg.get_entity(n)]
                 domain_title = f"Entidade: `{ent.name}` ({d_name or 'Lakehouse'})"
 
     if not entities:
-        entities = reg.list_entities()
-        relationships = reg.list_relationships()
+        med_dom = reg.get_domain("databricks_medallion")
+        if med_dom:
+            entities = med_dom.entities
+            relationships = med_dom.relationships
+            domain_title = "Arquitetura Medalhão Databricks (`workspace.default`)"
+        else:
+            entities = reg.list_entities()
+            relationships = reg.list_relationships()
 
     if not entities:
         from src.databricks.introspector import _build_mock_entities
@@ -335,6 +405,10 @@ def generate_diagram(diagram_type: str = "er", domain: str | None = None) -> str
         relationships = []
 
     if is_lineage:
+        if not entities or len(entities) == len(reg.list_entities()):
+            med_dom = reg.get_domain("databricks_medallion")
+            if med_dom:
+                entities = med_dom.entities
         mermaid_code = generate_lineage_diagram(entities)
         return (
             f"### 🌊 Fluxo de Linhagem Medalhão (Bronze → Silver → Gold)\n\n"
@@ -360,9 +434,7 @@ def generate_diagram(diagram_type: str = "er", domain: str | None = None) -> str
         table_section = (
             "#### 🔗 Relações e Chaves Estrangeiras (Camada Semântica):\n"
             "| Tabela Origem | Chave Origem (FK) | Relacionamento | Tabela Destino | Chave Destino (PK) |\n"
-            "|---|---|---|---|---|\n"
-            + "\n".join(rel_rows)
-            + "\n\n"
+            "|---|---|---|---|---|\n" + "\n".join(rel_rows) + "\n\n"
         )
 
     mermaid_code = generate_er_diagram(entities, relationships)
@@ -381,6 +453,7 @@ def generate_etl_pipeline(entity_name: str, layer: str = "silver") -> str:
 
     if not entity:
         from src.databricks.introspector import _build_mock_entities
+
         mock_ents = {e.name: e for e in _build_mock_entities()}
         entity = mock_ents.get(entity_name)
 
@@ -499,7 +572,9 @@ def query_semantic_layer_tool(
     group_by_dims: list[str] | str,
 ) -> str:
     """Compile analytical queries using semantic business metrics and dimensions."""
-    return query_semantic_layer(entity_name=entity_name, metric_names=metric_names, group_by_dims=group_by_dims)
+    return query_semantic_layer(
+        entity_name=entity_name, metric_names=metric_names, group_by_dims=group_by_dims
+    )
 
 
 @tool
@@ -557,4 +632,3 @@ LANGCHAIN_TOOLS = [
 def get_langchain_tools() -> list[Any]:
     """Retrieve LangChain tools for agent model binding."""
     return list(LANGCHAIN_TOOLS)
-

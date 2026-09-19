@@ -77,7 +77,9 @@ def test_build_delta_merge_query():
     assert "MERGE INTO main.silver.customers AS target" in merge_sql
     assert "USING bronze_customers AS source" in merge_sql
     assert "ON target.`customer_id` = source.`customer_id`" in merge_sql
-    assert "WHEN MATCHED THEN UPDATE SET `name` = source.`name`, `city` = source.`city`" in merge_sql
+    assert (
+        "WHEN MATCHED THEN UPDATE SET `name` = source.`name`, `city` = source.`city`" in merge_sql
+    )
     assert "WHEN NOT MATCHED THEN INSERT (`customer_id`, `name`, `city`)" in merge_sql
 
 

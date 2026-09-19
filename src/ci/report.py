@@ -42,18 +42,24 @@ class CIReport(BaseModel):
 
         all_issues = self.violations + self.anti_patterns
         if all_issues:
-            lines.extend([
-                "#### Diagnostic Details",
-                "| Severity | Rule | Line | Description |",
-                "|---|---|---|---|",
-            ])
+            lines.extend(
+                [
+                    "#### Diagnostic Details",
+                    "| Severity | Rule | Line | Description |",
+                    "|---|---|---|---|",
+                ]
+            )
             for issue in all_issues:
                 sev_icon = "🔴" if issue.severity == "error" else "🟡"
                 line_str = str(issue.line) if issue.line is not None else "-"
                 clean_msg = issue.message.replace("|", "/")
-                lines.append(f"| {sev_icon} {issue.severity.upper()} | `{issue.rule}` | {line_str} | {clean_msg} |")
+                lines.append(
+                    f"| {sev_icon} {issue.severity.upper()} | `{issue.rule}` | {line_str} | {clean_msg} |"
+                )
         else:
-            lines.append("🎉 *All automated linting, syntax, and data engineering best practices checks passed cleanly!*")
+            lines.append(
+                "🎉 *All automated linting, syntax, and data engineering best practices checks passed cleanly!*"
+            )
 
         rendered = "\n".join(lines)
         self.summary_markdown = rendered

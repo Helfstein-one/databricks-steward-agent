@@ -272,7 +272,7 @@ sql = compiler.compile_query(
     metric_names=["total_credit_limit", "utilization_rate"],
     group_by_dims=["product_type", "status"],
     filters=["status = 'ACTIVE'"],
-    limit=10
+    limit=10,
 )
 print(sql)
 ```
@@ -303,10 +303,7 @@ from src.ci.runner import run_ci_pipeline
 pipeline = generate_medallion_pipeline(domain.entities[0], layer="silver")
 
 # Submeter código à esteira de CI
-report = run_ci_pipeline(
-    pyspark_code=pipeline.pyspark_code,
-    sparksql_code=pipeline.sparksql_code
-)
+report = run_ci_pipeline(pyspark_code=pipeline.pyspark_code, sparksql_code=pipeline.sparksql_code)
 
 print(f"Status do CI: {'APROVADO' if report.is_approved else 'REPROVADO'}")
 print(report.summary_markdown)
@@ -321,11 +318,11 @@ result = create_data_product_pr(
     product_name="credit-facilities-silver",
     files={
         "pipelines/silver_facilities.py": pipeline.pyspark_code,
-        "pipelines/silver_facilities.sql": pipeline.sparksql_code
+        "pipelines/silver_facilities.sql": pipeline.sparksql_code,
     },
     ci_report=report,
     diagram_md=erd_markdown,
-    dry_run=False  # Altere para True em testes locais
+    dry_run=False,  # Altere para True em testes locais
 )
 
 print("Pull Request criado com sucesso:", result.pr_url)

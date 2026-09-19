@@ -62,22 +62,26 @@ class GitHubPRManager:
             lines.append(f"- `{f}`")
 
         if diagram_md.strip():
-            lines.extend([
-                "",
-                "### Architectural & Semantic Lineage Diagram",
-                "```mermaid",
-                diagram_md.strip(),
-                "```",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "### Architectural & Semantic Lineage Diagram",
+                    "```mermaid",
+                    diagram_md.strip(),
+                    "```",
+                ]
+            )
 
-        lines.extend([
-            "",
-            "### CI Quality Gate Summary",
-            ci_report.summary_markdown or ci_report.format_markdown(),
-            "",
-            "---",
-            "*Automated by Databricks Steward Agent with GitOps integration.*",
-        ])
+        lines.extend(
+            [
+                "",
+                "### CI Quality Gate Summary",
+                ci_report.summary_markdown or ci_report.format_markdown(),
+                "",
+                "---",
+                "*Automated by Databricks Steward Agent with GitOps integration.*",
+            ]
+        )
 
         return "\n".join(lines)
 
@@ -117,6 +121,13 @@ class GitHubPRManager:
             )
 
         target_base = base_branch or self.base_branch
+        orig_branch_res = self.git_client._run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+        orig_branch = (
+            orig_branch_res.stdout.strip()
+            if orig_branch_res.returncode == 0 and orig_branch_res.stdout.strip()
+            else None
+        )
+
         branch_name = self.git_client.create_feature_branch(product_name, base_branch=target_base)
 
         commit_title = f"feat(data-product): add {product_name} pipeline"
@@ -125,6 +136,10 @@ class GitHubPRManager:
             files=files,
             message=commit_title,
         )
+
+        # Restore original branch if it was modified
+        if orig_branch and orig_branch != branch_name:
+            self.git_client._run_git(["checkout", orig_branch])
 
         pr_title = f"feat(data-product): implement {product_name} data product"
         pr_body = self.build_pr_body(
@@ -168,7 +183,11 @@ class GitHubPRManager:
                 branch_name=branch_name,
                 commit_sha=commit_sha,
                 pr_number=getattr(pull_request, "number", 1),
-                pr_url=getattr(pull_request, "html_url", f"https://github.com/{self.repository_name}/pull/{getattr(pull_request, 'number', 1)}"),
+                pr_url=getattr(
+                    pull_request,
+                    "html_url",
+                    f"https://github.com/{self.repository_name}/pull/{getattr(pull_request, 'number', 1)}",
+                ),
                 status="success",
                 title=pr_title,
                 body=pr_body,

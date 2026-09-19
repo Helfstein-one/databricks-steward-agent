@@ -73,7 +73,7 @@ def generate_medallion_pipeline(
 
     if layer_norm == "bronze":
         source_path = source_table_or_path or f"/mnt/raw/{entity.name}"
-        
+
         # Build StructType schema for raw ingestion
         schema_fields = []
         for col in cols:
@@ -81,7 +81,9 @@ def generate_medallion_pipeline(
             nullable = "True" if col.nullable else "False"
             schema_fields.append(f"    StructField('{col.name}', {stype}, {nullable})")
 
-        schema_code = "StructType([\n" + ",\n".join(schema_fields) + "\n])" if schema_fields else "None"
+        schema_code = (
+            "StructType([\n" + ",\n".join(schema_fields) + "\n])" if schema_fields else "None"
+        )
 
         pyspark_code = f'''"""Bronze Layer Raw Ingestion Pipeline: {table_name}"""
 
@@ -156,7 +158,9 @@ COPY_OPTIONS ('mergeSchema' = 'true');
         cast_expressions = []
         for col in cols:
             if col.name not in ("_ingested_at", "_source_file"):
-                cast_expressions.append(f'        .withColumn("{col.name}", F.col("{col.name}").cast("{col.type}"))')
+                cast_expressions.append(
+                    f'        .withColumn("{col.name}", F.col("{col.name}").cast("{col.type}"))'
+                )
         casts_code = "\n".join(cast_expressions)
         if casts_code:
             casts_code += "\n"
@@ -203,14 +207,20 @@ if __name__ == "__main__":
 
     elif layer_norm == "gold":
         source_silver = source_table_or_path or f"silver_{entity.name}"
-        dim_cols = [d.column or d.name for d in dims] or ([c.name for c in cols[:2]] if cols else ["id"])
+        dim_cols = [d.column or d.name for d in dims] or (
+            [c.name for c in cols[:2]] if cols else ["id"]
+        )
         dim_strings = ", ".join([f'"{d}"' for d in dim_cols])
 
         metric_selects = []
         for m in metrics:
             safe_sql = ensure_nullif_division_safety(m.sql).replace("'", "\\'")
             metric_selects.append(f"        F.expr('{safe_sql}').alias('{m.name}')")
-        metrics_code = ",\n".join(metric_selects) if metric_selects else "        F.count('*').alias('record_count')"
+        metrics_code = (
+            ",\n".join(metric_selects)
+            if metric_selects
+            else "        F.count('*').alias('record_count')"
+        )
 
         pyspark_code = f'''"""Gold Layer Aggregated Business KPIs: {table_name}"""
 

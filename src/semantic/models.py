@@ -94,9 +94,7 @@ class EntityModel(BaseModel):
             seen = set()
             pk = data.get("primary_key")
             if pk:
-                cols.append(
-                    {"name": pk, "type": "string", "primary_key": True, "nullable": False}
-                )
+                cols.append({"name": pk, "type": "string", "primary_key": True, "nullable": False})
                 seen.add(pk)
             for dim in data.get("dimensions", []):
                 dim_name = dim.get("name") if isinstance(dim, dict) else getattr(dim, "name", "")

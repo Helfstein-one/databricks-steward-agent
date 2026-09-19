@@ -97,7 +97,9 @@ def generate_er_diagram(
                 col_name = _sanitize_id(dim.column or dim.name)
                 col_type = _sanitize_type(dim.type)
                 key_type = ""
-                if ent.primary_key and (dim.name == ent.primary_key or dim.column == ent.primary_key):
+                if ent.primary_key and (
+                    dim.name == ent.primary_key or dim.column == ent.primary_key
+                ):
                     key_type = " PK"
                 elif col_name.lower() in ent_fks:
                     key_type = " FK"
@@ -186,12 +188,16 @@ def generate_lineage_diagram(entities: list[EntityModel]) -> str:
             first_bronze = re.search(r"^\s+([a-zA-Z0-9_]+)\[", bronze_nodes[0])
             first_silver = re.search(r"^\s+([a-zA-Z0-9_]+)\[", silver_nodes[0])
             if first_bronze and first_silver:
-                lines.append(f"    {first_bronze.group(1)} -->|ETL Dedup & Clean| {first_silver.group(1)}")
+                lines.append(
+                    f"    {first_bronze.group(1)} -->|ETL Dedup & Clean| {first_silver.group(1)}"
+                )
 
         if silver_nodes and gold_nodes:
             first_silver = re.search(r"^\s+([a-zA-Z0-9_]+)\[", silver_nodes[0])
             first_gold = re.search(r"^\s+([a-zA-Z0-9_]+)\[", gold_nodes[0])
             if first_silver and first_gold:
-                lines.append(f"    {first_silver.group(1)} -->|Aggregate KPIs| {first_gold.group(1)}")
+                lines.append(
+                    f"    {first_silver.group(1)} -->|Aggregate KPIs| {first_gold.group(1)}"
+                )
 
     return "\n".join(lines)

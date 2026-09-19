@@ -73,8 +73,21 @@ def ensure_nullif_division_safety(sql_expr: str) -> str:
             denom_chars: list[str] = []
             depth = 0
             stop_keywords = {
-                "as", "from", "where", "group", "having", "order", "limit",
-                "when", "then", "else", "end", "and", "or", "join", "on",
+                "as",
+                "from",
+                "where",
+                "group",
+                "having",
+                "order",
+                "limit",
+                "when",
+                "then",
+                "else",
+                "end",
+                "and",
+                "or",
+                "join",
+                "on",
             }
 
             while i < n:
@@ -242,7 +255,9 @@ class SemanticQueryCompiler:
 
         # Process dimensions
         for dim_name in group_by_dims:
-            dim_info = self.registry.find_dimension_owner(dim_name, preferred_entity=primary_entity.name)
+            dim_info = self.registry.find_dimension_owner(
+                dim_name, preferred_entity=primary_entity.name
+            )
             if dim_info:
                 dim, owner_entity = dim_info
                 owner_alias = owner_entity.lower()
@@ -259,7 +274,9 @@ class SemanticQueryCompiler:
 
         # Process metrics
         for m_name in metric_names:
-            metric_info = self.registry.find_metric_owner(m_name, preferred_entity=primary_entity.name)
+            metric_info = self.registry.find_metric_owner(
+                m_name, preferred_entity=primary_entity.name
+            )
             if metric_info:
                 metric, owner_entity = metric_info
                 if owner_entity:
@@ -282,28 +299,28 @@ class SemanticQueryCompiler:
                         f"No join path found in semantic model between '{primary_alias}' and requested entity '{target_ent}'."
                     )
                 for neighbor, rel, is_forward in path:
-                        if neighbor not in joined_entities:
-                            target_entity_model = self.registry.get_entity(neighbor)
-                            target_table = (
-                                target_entity_model.table_name
-                                if target_entity_model and target_entity_model.table_name
-                                else neighbor
+                    if neighbor not in joined_entities:
+                        target_entity_model = self.registry.get_entity(neighbor)
+                        target_table = (
+                            target_entity_model.table_name
+                            if target_entity_model and target_entity_model.table_name
+                            else neighbor
+                        )
+                        if is_forward:
+                            # from_entity -> to_entity (neighbor)
+                            from_alias = rel.from_entity.lower()
+                            joins.append(
+                                f"LEFT JOIN {target_table} AS {neighbor} "
+                                f"ON {from_alias}.{rel.from_column} = {neighbor}.{rel.to_column}"
                             )
-                            if is_forward:
-                                # from_entity -> to_entity (neighbor)
-                                from_alias = rel.from_entity.lower()
-                                joins.append(
-                                    f"LEFT JOIN {target_table} AS {neighbor} "
-                                    f"ON {from_alias}.{rel.from_column} = {neighbor}.{rel.to_column}"
-                                )
-                            else:
-                                # to_entity -> from_entity (neighbor)
-                                to_alias = rel.to_entity.lower()
-                                joins.append(
-                                    f"LEFT JOIN {target_table} AS {neighbor} "
-                                    f"ON {to_alias}.{rel.to_column} = {neighbor}.{rel.from_column}"
-                                )
-                            joined_entities.add(neighbor)
+                        else:
+                            # to_entity -> from_entity (neighbor)
+                            to_alias = rel.to_entity.lower()
+                            joins.append(
+                                f"LEFT JOIN {target_table} AS {neighbor} "
+                                f"ON {to_alias}.{rel.to_column} = {neighbor}.{rel.from_column}"
+                            )
+                        joined_entities.add(neighbor)
 
         # Build SQL statements
         select_clause = "SELECT\n  " + ",\n  ".join(projections)

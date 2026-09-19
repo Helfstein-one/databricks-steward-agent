@@ -629,12 +629,18 @@ class TestOpenWebUIPipeFuzzing:
         assert "PySpark" in res_etl
 
         # 5. CI Quality Gate
-        body_ci = {"messages": [{"role": "user", "content": "validar codigo na esteira de ci lint"}]}
+        body_ci = {
+            "messages": [{"role": "user", "content": "validar codigo na esteira de ci lint"}]
+        }
         res_ci = pipe.pipe(body_ci)
         assert "CI Quality Gate Report" in res_ci
 
         # 6. GitOps PR (without the word 'pipeline' which triggers rule 4)
-        body_pr = {"messages": [{"role": "user", "content": "criar pull request no github para o data product"}]}
+        body_pr = {
+            "messages": [
+                {"role": "user", "content": "criar pull request no github para o data product"}
+            ]
+        }
         res_pr = pipe.pipe(body_pr)
         assert "PR Successfully Created" in res_pr or "Branch" in res_pr
 
@@ -645,7 +651,9 @@ class TestOpenWebUIPipeFuzzing:
         fires before Rule 6 (GitOps), preventing PR creation.
         """
         pipe = Pipe()
-        body = {"messages": [{"role": "user", "content": "abrir pull request no github com o pipeline"}]}
+        body = {
+            "messages": [{"role": "user", "content": "abrir pull request no github com o pipeline"}]
+        }
         res = pipe.pipe(body)
         # Empirically demonstrated: routes to Medallion ETL, not GitOps PR
         assert "Generated Medallion Pipeline" in res
@@ -674,7 +682,9 @@ class TestOpenWebUIPipeFuzzing:
         render erDiagram instead of Medallion lineage flowchart.
         """
         pipe = Pipe()
-        payload = {"messages": [{"role": "user", "content": "desenhar diagrama mermaid de linhagem"}]}
+        payload = {
+            "messages": [{"role": "user", "content": "desenhar diagrama mermaid de linhagem"}]
+        }
         res = pipe.pipe(payload)
         assert "erDiagram" in res
         assert "graph LR" not in res
@@ -702,7 +712,9 @@ class TestOpenWebUIPipeFuzzing:
     def test_pipe_runtime_exception_handling(self) -> None:
         """Verify pipe catches unexpected runtime exceptions and returns safe error message."""
         pipe = Pipe()
-        with patch.object(pipe.graph, "invoke", side_effect=RuntimeError("Simulated LLM network crash")):
+        with patch.object(
+            pipe.graph, "invoke", side_effect=RuntimeError("Simulated LLM network crash")
+        ):
             payload = {"messages": [{"role": "user", "content": "gerar pipeline"}]}
             res = pipe.pipe(payload)
             assert isinstance(res, str)

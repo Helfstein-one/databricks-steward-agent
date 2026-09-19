@@ -1,0 +1,322 @@
+domain: databricks_medallion
+description: Arquitetura Medalhão Databricks Lakehouse (Bronze -> Silver -> Gold) com Transações, KPIs de Vendas e Métricas de Clientes VIP
+catalog: workspace
+schema_name: default
+
+entities:
+  - name: medallion_bronze_transactions
+    table: workspace.default.medallion_bronze_transactions
+    primary_key: transaction_id
+    layer: bronze
+    description: Ingestão bruta de transações financeiras e de e-commerce append-only com metadados de ingestão.
+    synonyms:
+      - bronze_transactions
+      - transacoes_bronze
+      - transações_bronze
+      - raw_transactions
+      - bronze
+    dimensions:
+      - name: transaction_id
+        type: string
+        column: transaction_id
+        description: Identificador único da transação bruta
+      - name: user_id
+        type: string
+        column: user_id
+        description: Identificador do usuário que realizou a transação
+        synonyms:
+          - id_usuario
+          - cliente_id
+      - name: amount
+        type: double
+        column: amount
+        description: Valor monetário original da transação
+        synonyms:
+          - valor
+          - quantia
+      - name: status
+        type: string
+        column: status
+        description: Status de processamento original da transação
+        synonyms:
+          - estado
+      - name: category
+        type: string
+        column: category
+        description: Categoria da transação ou produto
+        synonyms:
+          - categoria
+      - name: created_at
+        type: string
+        column: created_at
+        description: Timestamp textual de criação na origem
+      - name: _ingested_at
+        type: timestamp
+        column: _ingested_at
+        description: Timestamp de auditoria de ingestão na camada Bronze
+    metrics:
+      - name: raw_transaction_count
+        type: count
+        sql: COUNT(transaction_id)
+        description: Total de eventos de transações brutas ingeridas
+        synonyms:
+          - total_transacoes_bronze
+      - name: raw_total_amount
+        type: sum
+        sql: SUM(amount)
+        description: Volume financeiro bruto ingerido
+        synonyms:
+          - volume_bruto
+
+  - name: medallion_silver_transactions
+    table: workspace.default.medallion_silver_transactions
+    primary_key: transaction_id
+    layer: silver
+    description: Transações higienizadas, deduplicadas e tipadas com campos temporais enriquecidos (timestamp e date).
+    synonyms:
+      - silver_transactions
+      - transacoes_silver
+      - transações_silver
+      - transactions
+      - transacoes
+      - transações
+      - silver
+    dimensions:
+      - name: transaction_id
+        type: string
+        column: transaction_id
+        description: Identificador único deduplicado da transação
+      - name: user_id
+        type: string
+        column: user_id
+        description: Identificador do cliente (chave de junção com customer KPIs)
+        synonyms:
+          - id_usuario
+          - customer_id
+          - cliente_id
+      - name: amount
+        type: double
+        column: amount
+        description: Valor monetário validado da transação
+        synonyms:
+          - valor
+          - valor_transacao
+      - name: status
+        type: string
+        column: status
+        description: Status higienizado e padronizado da transação
+      - name: category
+        type: string
+        column: category
+        description: Categoria normalizada de produto ou serviço
+        synonyms:
+          - categoria
+      - name: date
+        type: date
+        column: date
+        description: Data da transação para particionamento e agregações temporais
+        synonyms:
+          - data
+          - dt_transacao
+      - name: timestamp
+        type: timestamp
+        column: timestamp
+        description: Data e hora precisa da transação
+      - name: created_at
+        type: string
+        column: created_at
+        description: Registro temporal de criação original
+      - name: _ingested_at
+        type: timestamp
+        column: _ingested_at
+        description: Timestamp de ingestão na camada Bronze
+      - name: _silver_processed_at
+        type: timestamp
+        column: _silver_processed_at
+        description: Timestamp do processamento e curadoria na camada Silver
+    metrics:
+      - name: total_transactions
+        type: count
+        sql: COUNT(DISTINCT transaction_id)
+        description: Total de transações únicas confirmadas
+        synonyms:
+          - contagem_transacoes
+          - numero_transacoes
+      - name: total_revenue
+        type: sum
+        sql: SUM(amount)
+        description: Volume financeiro total transacionado
+        synonyms:
+          - receita_total
+          - volume_total
+          - faturamento
+      - name: avg_transaction_value
+        type: avg
+        sql: AVG(amount)
+        description: Valor médio por transação
+        synonyms:
+          - ticket_medio
+          - valor_medio
+      - name: completed_revenue
+        type: sum
+        sql: SUM(CASE WHEN status = 'COMPLETED' THEN amount ELSE 0 END)
+        description: Volume financeiro liquidado com sucesso
+        synonyms:
+          - receita_concluida
+
+  - name: medallion_gold_sales_kpis
+    table: workspace.default.medallion_gold_sales_kpis
+    primary_key: date
+    layer: gold
+    description: Camada Gold com indicadores consolidados e KPIs diários de vendas por categoria de produto.
+    synonyms:
+      - gold_sales_kpis
+      - sales_kpis
+      - kpis_vendas
+      - vendas_gold
+      - kpis_de_vendas
+      - vendas
+    dimensions:
+      - name: date
+        type: date
+        column: date
+        description: Data de consolidação dos indicadores analíticos
+        synonyms:
+          - data
+      - name: category
+        type: string
+        column: category
+        description: Categoria de produto agregada
+        synonyms:
+          - categoria
+      - name: total_revenue
+        type: double
+        column: total_revenue
+        description: Receita consolidada da categoria no dia
+      - name: total_orders
+        type: long
+        column: total_orders
+        description: Volume de pedidos/transações consolidados no dia
+      - name: avg_order_value
+        type: double
+        column: avg_order_value
+        description: Ticket médio calculado para a categoria no dia
+      - name: unique_customers
+        type: long
+        column: unique_customers
+        description: Número de compradores únicos no dia
+    metrics:
+      - name: gold_total_revenue
+        type: sum
+        sql: SUM(total_revenue)
+        description: Receita total acumulada da camada Gold
+        synonyms:
+          - receita_acumulada_gold
+      - name: gold_total_orders
+        type: sum
+        sql: SUM(total_orders)
+        description: Total consolidado de pedidos
+        synonyms:
+          - pedidos_consolidados
+      - name: gold_weighted_aov
+        type: ratio
+        sql: SUM(total_revenue) / NULLIF(SUM(total_orders), 0)
+        description: Ticket médio ponderado no período
+        synonyms:
+          - ticket_medio_geral
+      - name: gold_unique_customers
+        type: sum
+        sql: SUM(unique_customers)
+        description: Soma agregada de clientes únicos atendidos
+
+  - name: medallion_gold_customer_kpis
+    table: workspace.default.medallion_gold_customer_kpis
+    primary_key: user_id
+    layer: gold
+    description: Camada Gold com métricas agregadas por cliente, Lifetime Value (LTV), frequência de compra e perfil VIP.
+    synonyms:
+      - gold_customer_kpis
+      - customer_kpis
+      - kpis_clientes
+      - clientes_gold
+      - clientes
+      - customers
+      - usuarios
+    dimensions:
+      - name: user_id
+        type: string
+        column: user_id
+        description: Identificador único do cliente
+        synonyms:
+          - cliente_id
+          - id_cliente
+          - usuario_id
+      - name: lifetime_spend
+        type: double
+        column: lifetime_spend
+        description: Valor financeiro total gasto pelo cliente ao longo da vida (LTV)
+        synonyms:
+          - ltv
+          - gasto_total
+      - name: lifetime_orders
+        type: long
+        column: lifetime_orders
+        description: Quantidade total de compras realizadas pelo cliente
+        synonyms:
+          - total_compras
+      - name: avg_spend_per_order
+        type: double
+        column: avg_spend_per_order
+        description: Gasto médio do cliente por transação
+      - name: is_vip
+        type: boolean
+        column: is_vip
+        description: Flag indicando se o cliente pertence ao segmento VIP de alto valor
+        synonyms:
+          - vip
+          - cliente_vip
+    metrics:
+      - name: total_vip_customers
+        type: count
+        sql: COUNT(DISTINCT CASE WHEN is_vip = true THEN user_id END)
+        description: Total de clientes classificados como VIP
+        synonyms:
+          - clientes_vip
+      - name: total_customer_base
+        type: count
+        sql: COUNT(DISTINCT user_id)
+        description: Base total de clientes únicos cadastrados
+        synonyms:
+          - base_clientes
+      - name: average_customer_ltv
+        type: avg
+        sql: AVG(lifetime_spend)
+        description: Valor médio de Lifetime Value por cliente
+        synonyms:
+          - ltv_medio
+      - name: total_portfolio_revenue
+        type: sum
+        sql: SUM(lifetime_spend)
+        description: Receita total acumulada da carteira de clientes
+
+relationships:
+  - from_entity: medallion_bronze_transactions
+    to_entity: medallion_silver_transactions
+    from_column: transaction_id
+    to_column: transaction_id
+    type: one_to_one
+    description: Ingestão e higienização Bronze para Silver
+
+  - from_entity: medallion_silver_transactions
+    to_entity: medallion_gold_customer_kpis
+    from_column: user_id
+    to_column: user_id
+    type: many_to_one
+    description: Relação das transações Silver com métricas de cliente Gold
+
+  - from_entity: medallion_silver_transactions
+    to_entity: medallion_gold_sales_kpis
+    from_column: category
+    to_column: category
+    type: many_to_one
+    description: Agregação analítica das transações Silver para KPIs de vendas Gold

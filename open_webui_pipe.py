@@ -80,7 +80,10 @@ class Pipe:
 
     def _sync_llm_with_valves(self) -> None:
         """Sync ChatOpenAI client with active administrative valves if overridden."""
-        if self._synced_base_url != self.valves.LOCAL_LLM_BASE_URL or self._synced_model != self.valves.LOCAL_LLM_MODEL:
+        if (
+            self._synced_base_url != self.valves.LOCAL_LLM_BASE_URL
+            or self._synced_model != self.valves.LOCAL_LLM_MODEL
+        ):
             self._synced_base_url = self.valves.LOCAL_LLM_BASE_URL
             self._synced_model = self.valves.LOCAL_LLM_MODEL
             self.llm = get_local_chat_client(
@@ -118,6 +121,7 @@ class Pipe:
 
             # Support streaming if requested
             if body.get("stream", False):
+
                 def _stream_gen() -> Generator[str, None, None]:
                     chunk_size = 64
                     for i in range(0, len(response_text), chunk_size):

@@ -91,7 +91,9 @@ def test_steward_node_routing_etl():
 def test_steward_node_routing_ci():
     """Verify user query asking for CI quality check runs CI pipeline."""
     state: AgentState = {
-        "messages": [{"role": "user", "content": "Validar codigo na esteira de CI com Ruff e SQLFluff"}],
+        "messages": [
+            {"role": "user", "content": "Validar codigo na esteira de CI com Ruff e SQLFluff"}
+        ],
         "user_query": "Validar codigo na esteira de CI com Ruff e SQLFluff",
     }
     output = steward_node(state)
@@ -198,7 +200,9 @@ def test_steward_node_title_request():
         "Generate a title for this chat",
     ]
     for prompt in title_prompts:
-        out = steward_node({"messages": [{"role": "user", "content": prompt}], "user_query": prompt})
+        out = steward_node(
+            {"messages": [{"role": "user", "content": prompt}], "user_query": prompt}
+        )
         assert "Databricks Steward - Governança" in out["response"]
         assert "Hello!" not in out["response"]
 
@@ -215,54 +219,66 @@ def test_steward_node_portuguese_greetings():
 def test_steward_node_conceptual_explanations():
     """Verify conceptual questions return rich educational explanations instead of raw metadata dumps."""
     # Semantic layer
-    sem_out = steward_node({
-        "messages": [{"role": "user", "content": "o que é camada semantica ?"}],
-        "user_query": "o que é camada semantica ?",
-    })
+    sem_out = steward_node(
+        {
+            "messages": [{"role": "user", "content": "o que é camada semantica ?"}],
+            "user_query": "o que é camada semantica ?",
+        }
+    )
     assert "Camada Semântica (Semantic Layer)" in sem_out["response"]
     assert "Fonte Única da Verdade" in sem_out["response"]
     assert "corporate_credit" in sem_out["response"]
 
     # Unity Catalog
-    uc_out = steward_node({
-        "messages": [{"role": "user", "content": "o que é o unity catalog?"}],
-        "user_query": "o que é o unity catalog?",
-    })
+    uc_out = steward_node(
+        {
+            "messages": [{"role": "user", "content": "o que é o unity catalog?"}],
+            "user_query": "o que é o unity catalog?",
+        }
+    )
     assert "Unity Catalog" in uc_out["response"]
     assert "3 Níveis" in uc_out["response"]
 
     # Medallion Architecture
-    med_out = steward_node({
-        "messages": [{"role": "user", "content": "como funciona a arquitetura medalhao?"}],
-        "user_query": "como funciona a arquitetura medalhao?",
-    })
+    med_out = steward_node(
+        {
+            "messages": [{"role": "user", "content": "como funciona a arquitetura medalhao?"}],
+            "user_query": "como funciona a arquitetura medalhao?",
+        }
+    )
     assert "Arquitetura Medalhão" in med_out["response"]
     assert "Bronze" in med_out["response"]
     assert "Silver" in med_out["response"]
     assert "Gold" in med_out["response"]
 
     # CI Quality Gate
-    ci_out = steward_node({
-        "messages": [{"role": "user", "content": "para que serve a esteira de ci?"}],
-        "user_query": "para que serve a esteira de ci?",
-    })
+    ci_out = steward_node(
+        {
+            "messages": [{"role": "user", "content": "para que serve a esteira de ci?"}],
+            "user_query": "para que serve a esteira de ci?",
+        }
+    )
     assert "Esteira de CI" in ci_out["response"]
     assert "Ruff" in ci_out["response"]
     assert "SQLFluff" in ci_out["response"]
 
     # GitOps
-    git_out = steward_node({
-        "messages": [{"role": "user", "content": "o que é gitops no lakehouse?"}],
-        "user_query": "o que é gitops no lakehouse?",
-    })
+    git_out = steward_node(
+        {
+            "messages": [{"role": "user", "content": "o que é gitops no lakehouse?"}],
+            "user_query": "o que é gitops no lakehouse?",
+        }
+    )
     assert "GitOps" in git_out["response"]
     assert "Pull Request" in git_out["response"]
 
     # Mermaid
-    m_out = steward_node({
-        "messages": [{"role": "user", "content": "o que sao diagramas mermaid?"}],
-        "user_query": "o que sao diagramas mermaid?",
-    })
+    m_out = steward_node(
+        {
+            "messages": [{"role": "user", "content": "o que sao diagramas mermaid?"}],
+            "user_query": "o que sao diagramas mermaid?",
+        }
+    )
     assert "Mermaid.js" in m_out["response"]
     assert "erDiagram" in m_out["response"]
 
@@ -270,10 +286,12 @@ def test_steward_node_conceptual_explanations():
 def test_steward_node_entity_modeling_queries():
     """Verify specific table modeling queries return detailed columns, PK, metrics, and erDiagram."""
     # 1. Customers modeling
-    cust_out = steward_node({
-        "messages": [{"role": "user", "content": "qual a modelagem de customers"}],
-        "user_query": "qual a modelagem de customers",
-    })
+    cust_out = steward_node(
+        {
+            "messages": [{"role": "user", "content": "qual a modelagem de customers"}],
+            "user_query": "qual a modelagem de customers",
+        }
+    )
     assert "### 📐 Modelagem de Dados: `customers`" in cust_out["response"]
     assert "main.sales.customers" in cust_out["response"]
     assert "sales_lakehouse" in cust_out["response"]
@@ -284,10 +302,12 @@ def test_steward_node_entity_modeling_queries():
     assert "erDiagram" in cust_out["active_diagram"]
 
     # 2. Orders table modeling
-    orders_out = steward_node({
-        "messages": [{"role": "user", "content": "qual a modelagem da tabela orders"}],
-        "user_query": "qual a modelagem da tabela orders",
-    })
+    orders_out = steward_node(
+        {
+            "messages": [{"role": "user", "content": "qual a modelagem da tabela orders"}],
+            "user_query": "qual a modelagem da tabela orders",
+        }
+    )
     assert "### 📐 Modelagem de Dados: `orders`" in orders_out["response"]
     assert "main.sales.orders" in orders_out["response"]
     assert "order_id" in orders_out["response"]
@@ -295,10 +315,12 @@ def test_steward_node_entity_modeling_queries():
     assert "erDiagram" in orders_out["active_diagram"]
 
     # 3. Facilities schema
-    fac_out = steward_node({
-        "messages": [{"role": "user", "content": "schema de facilities"}],
-        "user_query": "schema de facilities",
-    })
+    fac_out = steward_node(
+        {
+            "messages": [{"role": "user", "content": "schema de facilities"}],
+            "user_query": "schema de facilities",
+        }
+    )
     assert "### 📐 Modelagem de Dados: `facilities`" in fac_out["response"]
     assert "main.corporate_credit.credit_facilities" in fac_out["response"]
     assert "facility_id" in fac_out["response"]
@@ -306,10 +328,12 @@ def test_steward_node_entity_modeling_queries():
     assert "erDiagram" in fac_out["active_diagram"]
 
     # 4. Impairments structure
-    imp_out = steward_node({
-        "messages": [{"role": "user", "content": "estrutura da tabela impairments"}],
-        "user_query": "estrutura da tabela impairments",
-    })
+    imp_out = steward_node(
+        {
+            "messages": [{"role": "user", "content": "estrutura da tabela impairments"}],
+            "user_query": "estrutura da tabela impairments",
+        }
+    )
     assert "### 📐 Modelagem de Dados: `impairments`" in imp_out["response"]
     assert "main.corporate_credit.impairments" in imp_out["response"]
     assert "impairment_id" in imp_out["response"]

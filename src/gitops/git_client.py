@@ -61,13 +61,19 @@ class GitClient:
                 f.write(content)
             self._run_git(["add", str(dest)])
 
-        commit_msg = message or f"feat(data-product): implement {branch_name.replace('feature/', '')} pipeline"
+        commit_msg = (
+            message
+            or f"feat(data-product): implement {branch_name.replace('feature/', '')} pipeline"
+        )
 
         cmd = [
-            "-c", f"user.name={author_name}",
-            "-c", f"user.email={author_email}",
+            "-c",
+            f"user.name={author_name}",
+            "-c",
+            f"user.email={author_email}",
             "commit",
-            "-m", commit_msg,
+            "-m",
+            commit_msg,
         ]
         self._run_git(cmd)
 

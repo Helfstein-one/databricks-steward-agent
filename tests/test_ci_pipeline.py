@@ -1,6 +1,5 @@
 """Unit and component integration tests for Data Best Practices CI quality gate (Tier 2)."""
 
-
 from src.ci.anti_patterns import DataAntiPatternDetector
 from src.ci.report import CIReport, Violation
 from src.ci.runner import run_ci_pipeline
@@ -107,7 +106,9 @@ def test_ci_pipeline_rejects_sparksql_syntax_error(flawed_sparksql_syntax_error_
     report = run_ci_pipeline(sparksql_code=flawed_sparksql_syntax_error_code)
 
     assert report.is_approved is False
-    assert report.sqlfluff_status == "FAILED" or any(v.severity == "error" for v in report.violations)
+    assert report.sqlfluff_status == "FAILED" or any(
+        v.severity == "error" for v in report.violations
+    )
     assert "REJECTED" in report.summary_markdown
 
 
