@@ -376,7 +376,7 @@ def test_adversarial_obfuscated_negations(obfuscated_negation: str) -> None:
     assert _is_confirmation(obfuscated_negation) is False
 
 
-def test_e2e_journey_step_failure_handling() -> None:
+def test_e2e_journey_step_failure_handling(mock_env) -> None:
     """Verify that simulated Step failures in run_e2e_journey raise AssertionError as expected."""
     import test_e2e_journey
 
@@ -385,6 +385,8 @@ def test_e2e_journey_step_failure_handling() -> None:
     mock_pipe.pipe.return_value = ""
 
     with (
+        patch("test_e2e_journey.settings.databricks_host", "https://test.databricks.com"),
+        patch("test_e2e_journey.settings.databricks_token", "test_token"),
         patch("test_e2e_journey.Pipe", return_value=mock_pipe),
         pytest.raises(AssertionError, match="Step 1: Empty response received"),
     ):
