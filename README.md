@@ -76,32 +76,45 @@ sequenceDiagram
     autonumber
     actor User as Usuário (Open WebUI)
     participant Pipe as open_webui_pipe.py
-    participant Agent as LangGraph Steward
-    participant Semantic as Camada Semântica & UC
-    participant Visualizer as Mermaid Visualizer
+    participant Agent as LangGraph Steward (Graph)
+    participant LLMWrapper as Conversational LLM Wrapper
+    participant Databricks as Databricks SDK (Workspace & SQL)
     participant ETL as Gerador de ETL Medalhão
-    participant CI as Esteira de CI
+    participant CI as Esteira de CI (Ruff/SQLFluff)
     participant GitOps as GitHub API
 
-    User->>Pipe: "Gostaria de modelar um produto de dados de facilities de crédito"
-    Pipe->>Agent: Encaminha prompt com contexto
-    Agent->>Semantic: Inspeciona catálogo & carrega ontologia YAML
-    Semantic-->>Agent: Entidades, dimensões e métricas disponíveis
-    Agent->>Visualizer: Gera modelo relacional e linhagem
-    Visualizer-->>Agent: Bloco Markdown Mermaid (`erDiagram`)
-    Agent-->>User: Retorna diagrama ER no chat com explicação de negócio
+    User->>Pipe: "Consulte os dados da tabela customers"
+    Pipe->>Agent: Executa StateGraph
+    Agent->>Databricks: preview_table_data(table="customers")
+    alt Tabela Inexistente ou Erro SQL
+        Databricks-->>Agent: Retorna Manifesto do Erro (status.state = FAILED)
+        Agent-->>User: Exibe Tabela Markdown alertando o Erro Real
+    else Tabela Existe
+        Databricks-->>Agent: Retorna 10 linhas em Array e Schema de Colunas
+        Agent->>LLMWrapper: Envolve Markdown com contexto amigável
+        LLMWrapper-->>User: "Aqui estão os dados da tabela customers..."
+    end
 
-    User->>Pipe: "Aprovado! Crie o pipeline Silver em PySpark com deduplicação"
-    Pipe->>Agent: Dispara geração de pipeline
-    Agent->>ETL: Gera código PySpark e SparkSQL estruturado
-    ETL-->>Agent: Scripts com tipagem explícita e regras Delta
-    Agent->>CI: Submete código à esteira de CI
-    Note over CI: Executa Ruff + SQLFluff SparkSQL + Análise de Anti-Patterns
-    CI-->>Agent: Relatório de auditoria (Status: PASSED)
+    User->>Pipe: "propor um etl gold a partir dessa tabela"
+    Pipe->>Agent: Detecta _is_etl_generation_query
+    Agent->>ETL: Gera PySpark & SparkSQL estruturado com Idempotência
+    Agent->>LLMWrapper: Adiciona naturalidade na exibição dos scripts
+    LLMWrapper-->>User: Entrega bloco Markdown do Pipeline e pede confirmação
 
-    Agent->>GitOps: Cria branch, commita arquivos e abre Pull Request
-    GitOps-->>Agent: Pull Request #42 criado no GitHub
-    Agent-->>User: Retorna código gerado, relatório de CI e link do Pull Request!
+    User->>Pipe: "sim, pode prosseguir" (Regex Flexível de Confirmação)
+    Pipe->>Agent: Confirma Intenção e Resgata Código do Histórico
+    Agent->>CI: Roda Pytest, Ruff e SQLFluff contra os códigos PySpark e SQL
+    CI-->>Agent: Relatório ✅ APPROVED
+
+    par Deploy no Databricks
+        Agent->>Databricks: Cria remoto em /Shared/pipelines/
+        Agent->>Databricks: Cria Job Task (SqlTask via warehouse_id)
+    and Deploy no GitHub
+        Agent->>GitOps: git add -f, commit, push remoto para origin/main
+    end
+
+    Agent->>LLMWrapper: Formata CI Report e Confirmações
+    LLMWrapper-->>User: "## 🚀 Ciclo de Vida Concluído com Sucesso! Job XYZ criado..."
 ```
 
 ---
@@ -331,8 +344,7 @@ print("Pull Request criado com sucesso:", result.pr_url)
 ---
 
 ## 🧪 Suíte de Testes Automatizados
-
-O projeto conta com **131 testes automatizados** cobrindo todas as camadas do sistema:
+O projeto conta com **369 testes automatizados** cobrindo todas as camadas do sistema, provados em baterias exaustivas (incluindo Mocks do Databricks SDK):
 
 ```bash
 # Executar todos os testes
@@ -341,8 +353,8 @@ make test
 # Executar apenas testes de fuzzing e segurança adversarial
 .venv/bin/pytest tests/test_adversarial_fuzzing.py -v
 
-# Executar cenários ponta a ponta
-.venv/bin/pytest tests/test_e2e_scenarios.py -v
+# Executar jornada End-to-End via Grafo Conversacional
+.venv/bin/pytest tests/test_e2e_journey.py -v
 ```
 
 ---

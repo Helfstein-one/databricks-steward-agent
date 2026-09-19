@@ -7,8 +7,27 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
-## [0.1.0] - 2026-09-18
+## [0.2.0] - 2026-09-19
 
+### 🚀 Atualizado e Corrigido (End-to-End QA)
+
+#### 1. Resolução do Loop de Interações e Confirmação de ETL
+- Correção crítica no `_is_confirmation` em `src/agent/graph.py` que falhava ao não reconhecer variações naturais de linguagem ("sim, pode prosseguir", "pode gerar"). Isso evitava loops infinitos onde o agente regenerava o código ao invés de autorizar o deploy.
+- Implementação do `_synthesize_conversational_response` para envolver as saídas engessadas (códigos e tabelas) em mensagens fluidas, geradas pelo modelo LLM.
+
+#### 2. Integração e Tratamento de Erros com Databricks SDK
+- Refatoração profunda em `src/databricks/client.py` para mapear corretamente o objeto `status.state == "FAILED"` quando uma consulta SQL resulta em erro (ex: tabela inexistente), parando de retornar "Tabela Vazia" de forma silenciosa e repassando o erro diretamente ao usuário.
+- Correção das chamadas do Databricks Jobs API para uso explícito de `SqlTask` e `warehouse_id`, evitando falhas com submissões incorretas de Cluster IDs.
+- Correção da passagem de Enums restritos `Language.SQL`, `Language.PYTHON` e `ImportFormat.AUTO` na submissão de arquivos para o Workspace remoto do Databricks.
+
+#### 3. Auditoria E2E e Equipe Teamwork
+- Criação do script integrado `tests/test_e2e_journey.py` cobrindo a jornada real através do grafo conversacional, provando a viabilidade de um Chat End-to-End validado.
+- Adição de testes adversariais empíricos (`test_empirical_challenger.py`, `test_databricks_empirical_challenge.py`).
+- Incremento para cobertura gigantesca chegando a 369 testes unitários e de integração (100% PASS).
+
+---
+
+## [0.1.0] - 2026-09-18
 ### 🚀 Adicionado (Initial Release)
 
 #### 1. Interface Open WebUI & Orquestração LangGraph (R1)
