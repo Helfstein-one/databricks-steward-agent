@@ -20,6 +20,7 @@ class SemanticRegistry:
     """Registry for loading, indexing, and querying semantic domain ontologies."""
 
     def __init__(self, models_dir: Path | str | None = None):
+        self.models_dir = Path(models_dir) if models_dir else None
         self.domains: dict[str, SemanticDomainModel] = {}
         self.entities: dict[str, EntityModel] = {}
         self.metrics: dict[str, MetricModel] = {}
@@ -342,3 +343,142 @@ class SemanticRegistry:
             sections.append("\n".join(section))
 
         return "\n\n".join(sections)
+
+    def register_data_product_entity(
+        self,
+        entity_name: str,
+        table_name: str,
+        columns: list[dict[str, Any]],
+        source_entity: str | None = None,
+        domain_name: str = "databricks_medallion",
+        models_dir: Path | str | None = None,
+    ) -> EntityModel | None:
+        """Register a new data product entity into the YAML semantic model and reload the registry."""
+        target_dir = (
+            Path(models_dir) if models_dir else (self.models_dir or Path("configs/semantic_models"))
+        )
+        yaml_file = target_dir / f"{domain_name}.yaml"
+        if not yaml_file.exists():
+            yaml_files = list(target_dir.glob("*.yaml"))
+            if yaml_files:
+                yaml_file = yaml_files[0]
+
+        raw_data: dict[str, Any] = {}
+        if yaml_file.exists():
+            with open(yaml_file, encoding="utf-8") as f:
+                raw_data = yaml.safe_load(f) or {}
+
+        # 1. Infer primary key
+        col_names = [c.get("name", "") for c in columns if isinstance(c, dict)]
+        pk = next(
+            (c for c in col_names if c.endswith("_id") or c == "id" or "key" in c),
+            col_names[0] if col_names else "id",
+        )
+
+        # 2. Build dimensions
+        dimensions: list[dict[str, Any]] = []
+        for col in columns:
+            c_name = col.get("name", "")
+            c_type = str(col.get("type", "string")).lower()
+            std_type = (
+                "double"
+                if any(t in c_type for t in ("double", "float", "decimal", "numeric"))
+                else (
+                    "bigint"
+                    if any(t in c_type for t in ("int", "bigint", "long"))
+                    else (
+                        "timestamp"
+                        if "timestamp" in c_type
+                        else ("date" if "date" in c_type else "string")
+                    )
+                )
+            )
+            dimensions.append(
+                {
+                    "name": c_name,
+                    "type": std_type,
+                    "column": c_name,
+                    "description": f"Coluna {c_name} do data product {entity_name}",
+                }
+            )
+
+        # 3. Build metrics
+        metrics: list[dict[str, Any]] = [
+            {
+                "name": f"total_{entity_name}_records",
+                "type": "count",
+                "sql": "COUNT(*)",
+                "description": f"Contagem total de registros em {entity_name}",
+            }
+        ]
+        for col in columns:
+            c_name = col.get("name", "")
+            c_type = str(col.get("type", "string")).lower()
+            if any(
+                t in c_type for t in ("double", "float", "decimal", "numeric", "int", "bigint")
+            ) and not (c_name.endswith("_id") or c_name == "id"):
+                metrics.append(
+                    {
+                        "name": f"total_{c_name}",
+                        "type": "sum",
+                        "sql": f"SUM({c_name})",
+                        "description": f"Soma agregada de {c_name}",
+                    }
+                )
+                metrics.append(
+                    {
+                        "name": f"avg_{c_name}",
+                        "type": "avg",
+                        "sql": f"AVG({c_name})",
+                        "description": f"Média de {c_name}",
+                    }
+                )
+
+        # 4. Build relationships
+        relationships: list[dict[str, Any]] = []
+        if source_entity and source_entity in self.entities:
+            src = self.entities[source_entity]
+            src_cols = [d.column for d in src.dimensions]
+            common_col = next((c for c in col_names if c in src_cols), src.primary_key)
+            if common_col:
+                relationships.append(
+                    {
+                        "name": f"{source_entity}_to_{entity_name}",
+                        "from_entity": source_entity,
+                        "from_column": common_col,
+                        "to_entity": entity_name,
+                        "to_column": common_col,
+                        "type": "many_to_one",
+                    }
+                )
+
+        new_entity_dict: dict[str, Any] = {
+            "name": entity_name,
+            "table": table_name,
+            "primary_key": pk,
+            "layer": "gold" if "gold" in entity_name.lower() else "silver",
+            "description": f"Data Product {entity_name} gerado e materializado no Databricks Unity Catalog.",
+            "synonyms": [entity_name, entity_name.replace("_", " ")],
+            "dimensions": dimensions,
+            "metrics": metrics,
+        }
+        if relationships:
+            new_entity_dict["relationships"] = relationships
+
+        entities_list = raw_data.setdefault("entities", [])
+        existing_idx = next(
+            (i for i, e in enumerate(entities_list) if e.get("name") == entity_name), None
+        )
+        if existing_idx is not None:
+            entities_list[existing_idx] = new_entity_dict
+        else:
+            entities_list.append(new_entity_dict)
+
+        yaml_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(yaml_file, "w", encoding="utf-8") as f:
+            yaml.dump(raw_data, f, sort_keys=False, allow_unicode=True)
+
+        if target_dir.exists():
+            self.load_directory(target_dir)
+
+        return self.get_entity(entity_name)

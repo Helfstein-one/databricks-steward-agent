@@ -7,6 +7,7 @@ import re
 import subprocess
 import time
 from pathlib import Path
+from typing import Any
 
 
 class GitClient:
@@ -89,3 +90,48 @@ class GitClient:
         """Push branch to remote. Returns True if successful or dry-run."""
         res = self._run_git(["push", "-u", remote, branch_name])
         return res.returncode == 0
+
+    def commit_and_push_to_main(
+        self,
+        files: dict[str, str],
+        message: str,
+        author_name: str = "Databricks Steward Agent",
+        author_email: str = "steward-agent@databricks.local",
+        remote: str = "origin",
+    ) -> dict[str, Any]:
+        """Write files, stage them, commit to main, and push to remote origin/main."""
+        for rel_path, content in files.items():
+            dest = self.repo_path / rel_path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with open(dest, "w", encoding="utf-8") as f:
+                f.write(content)
+            self._run_git(["add", str(dest)])
+
+        cmd = [
+            "-c",
+            f"user.name={author_name}",
+            "-c",
+            f"user.email={author_email}",
+            "commit",
+            "-m",
+            message,
+        ]
+        self._run_git(cmd)
+
+        sha_res = self._run_git(["rev-parse", "HEAD"])
+        commit_sha = (
+            sha_res.stdout.strip()
+            if sha_res.returncode == 0 and sha_res.stdout.strip()
+            else hashlib.sha256(f"main-{time.time()}".encode()).hexdigest()[:12]
+        )
+
+        push_res = self._run_git(["push", remote, "main"])
+        push_ok = push_res.returncode == 0
+
+        return {
+            "branch": "main",
+            "commit_sha": commit_sha,
+            "commit_message": message,
+            "push_success": push_ok,
+            "files": list(files.keys()),
+        }

@@ -23,3 +23,6 @@ class AgentState(TypedDict, total=False):
     gitops_result: GitOpsResult | None
     user_query: str | None
     response: str | None
+    pending_pipeline: dict[str, Any] | None
+    job_result: dict[str, Any] | None
+    preview_data: dict[str, Any] | None

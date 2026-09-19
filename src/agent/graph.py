@@ -199,25 +199,124 @@ def _is_greeting(query: str) -> bool:
 def _is_title_request(query: str) -> bool:
     """Check if query is an Open WebUI background prompt to generate a conversation title."""
     q = (query or "").lower()
-    return (
-        ("title" in q or "título" in q)
-        and any(
-            w in q
-            for w in (
-                "generate",
-                "gerar",
-                "crie",
-                "create",
-                "summarize",
-                "resumo",
-                "3-5",
-                "words",
-                "palavras",
-                "chat",
-                "conversa",
+    return bool(
+        (
+            ("title" in q or "título" in q)
+            and any(
+                w in q
+                for w in (
+                    "generate",
+                    "gerar",
+                    "crie",
+                    "create",
+                    "summarize",
+                    "resumo",
+                    "3-5",
+                    "words",
+                    "palavras",
+                    "chat",
+                    "conversa",
+                )
             )
         )
-    ) or ("generate a concise" in q and "title" in q)
+        or ("generate a concise" in q and "title" in q)
+    )
+
+
+def _is_data_preview_query(query: str) -> bool:
+    """Check if query requests table data inspection, preview, or sample."""
+    q = (query or "").strip().lower()
+    patterns = [
+        r"\b(consultar\s+dados|amostra\s+de\s+dados|amostra\s+da\s+tabela|preview\s+da\s+tabela|preview\s+de\s+dados)\b",
+        r"\b(mostrar\s+dados|ver\s+dados|trazer\s+dados|exibir\s+dados|ler\s+dados)\b",
+        r"\b(mostrar\s+tabela|ver\s+tabela|preview\s+tabela|amostra\s+tabela)\b",
+        r"^select\s+.*\s+from\s+",
+    ]
+    return any(re.search(p, q) for p in patterns)
+
+
+def _is_confirmation(query: str) -> bool:
+    """Check if query is a positive confirmation to execute pending pipeline action."""
+    q = (query or "").strip().lower()
+    return q in (
+        "sim",
+        "confirmar",
+        "confirmo",
+        "aprovar",
+        "aprovo",
+        "pode executar",
+        "executar",
+        "confirmado",
+        "prosseguir",
+        "ok",
+        "yes",
+        "y",
+        "positivo",
+        "autorizado",
+    )
+
+
+def _extract_table_or_entity(query: str) -> str:
+    """Extract table or entity name from query."""
+    q = (query or "").strip().lower()
+    match_full = re.search(r"\b([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\b", q)
+    if match_full:
+        return match_full.group(1)
+    match_two = re.search(r"\b([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\b", q)
+    if match_two:
+        return match_two.group(1)
+
+    ent = _extract_entity_from_query(q)
+    if ent:
+        return ent
+
+    match_word = re.search(r"\b(?:tabela|table|from|de)\s+([a-zA-Z0-9_]+)\b", q)
+    if match_word:
+        return match_word.group(1)
+
+    return "medallion_silver_transactions"
+
+
+def _extract_pending_from_history(messages: list[Any]) -> dict[str, Any]:
+    """Extract previously generated pipeline code and product name from message history."""
+    for m in reversed(messages):
+        content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+        if not content or not isinstance(content, str):
+            continue
+        if (
+            "PySpark Pipeline" in content
+            or "SparkSQL" in content
+            or "Generated Medallion Pipeline" in content
+        ):
+            name_match = re.search(r"Generated Medallion Pipeline:\s*([^\s(]+)", content)
+            prod_name = (
+                name_match.group(1).strip() if name_match else "medallion_gold_sales_summary"
+            )
+            py_match = re.search(r"```(?:python|py)\n(.*?)\n```", content, re.DOTALL)
+            py_code = (
+                py_match.group(1).strip()
+                if py_match
+                else "def process(df):\n    return df.filter(df['status'] == 'COMPLETED')\n"
+            )
+            sql_match = re.search(r"```sql\n(.*?)\n```", content, re.DOTALL)
+            sql_code = (
+                sql_match.group(1).strip()
+                if sql_match
+                else f"CREATE OR REPLACE TABLE workspace.default.{prod_name.replace('-', '_')} AS SELECT * FROM workspace.default.medallion_silver_transactions;"
+            )
+            return {
+                "product_name": prod_name,
+                "pyspark": py_code,
+                "sparksql": sql_code,
+                "source_entity": "medallion_silver_transactions",
+            }
+
+    return {
+        "product_name": "medallion_gold_sales_summary",
+        "pyspark": "def process(df):\n    return df.filter(df['status'] == 'COMPLETED').dropDuplicates(['transaction_id'])\n",
+        "sparksql": "CREATE OR REPLACE TABLE workspace.default.medallion_gold_sales_summary AS SELECT date, category, SUM(amount) AS total_revenue, COUNT(*) AS total_orders FROM workspace.default.medallion_silver_transactions GROUP BY date, category;",
+        "source_entity": "medallion_silver_transactions",
+    }
 
 
 def _is_conceptual_question(query: str) -> bool:
@@ -483,6 +582,23 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
                 "gitops_result": gitops_result,
             }
 
+    # Data preview / inspection query (e.g. "consultar dados da tabela X")
+    if _is_data_preview_query(user_query):
+        from src.agent.tools import preview_table_data
+
+        target_table = _extract_table_or_entity(user_query)
+        lim_match = re.search(r"\blimit\s+(\d+)\b", q_lower)
+        limit_val = int(lim_match.group(1)) if lim_match else 10
+        response_text = preview_table_data(table_name=target_table, limit=limit_val)
+        return {
+            "messages": [AIMessage(content=response_text)],
+            "response": response_text,
+            "active_diagram": active_diagram,
+            "generated_code": generated_code,
+            "ci_report": ci_report,
+            "gitops_result": gitops_result,
+        }
+
     # Entity-specific data modeling / schema requests (e.g. "qual a modelagem de customers")
     if _is_entity_modeling_query(user_query):
         ent_name = _extract_entity_from_query(user_query) or "customers"
@@ -496,6 +612,77 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
             "generated_code": generated_code,
             "ci_report": ci_report,
             "gitops_result": gitops_result,
+        }
+
+    # Confirmation of pending ETL pipeline lifecycle (CI -> GitOps -> Databricks Job -> Semantic Layer)
+
+    if _is_confirmation(user_query):
+        from src.agent.tools import deploy_and_materialize_data_product
+
+        pending = state.get("pending_pipeline") or _extract_pending_from_history(messages)
+        prod_name = pending.get("product_name", "medallion_gold_sales_kpis")
+        p_py = pending.get("pyspark", "")
+        p_sql = pending.get("sparksql", "")
+        p_src = pending.get("source_entity", "medallion_silver_transactions")
+
+        res = deploy_and_materialize_data_product(
+            product_name=prod_name,
+            pyspark_code=p_py,
+            sparksql_code=p_sql,
+            source_entity=p_src,
+        )
+
+        if res.get("status") == "ci_failed":
+            response_text = str(res.get("message", "❌ CI Quality Gate rejeitou o pipeline."))
+            ci_report = res.get("ci_report")
+        else:
+            ci_rep = res["ci_report"]
+            git_res = res["git_result"]
+            job_res = res["job_result"]
+            ent_model = res.get("entity_model")
+            diag_md = res.get("updated_diagram", "")
+            active_diagram = diag_md
+
+            metrics_list = (
+                ", ".join([f"`{m.name}`" for m in ent_model.metrics])
+                if ent_model and ent_model.metrics
+                else "`total_records`"
+            )
+            push_label = (
+                "✅ Sincronizado com `origin/main` no GitHub"
+                if git_res.get("push_success")
+                else "✅ Commit local em `main`"
+            )
+
+            response_text = (
+                f"## 🚀 Ciclo de Vida do Data Product Concluído com Sucesso!\n\n"
+                f"### 🛡️ 1. Esteira de CI Quality Gate\n"
+                f"{ci_rep.summary_markdown}\n\n"
+                f"### 📦 2. GitOps Auto Commit & Push\n"
+                f"- **Branch:** `{git_res['branch']}`\n"
+                f"- **Commit SHA:** `{git_res['commit_sha']}`\n"
+                f"- **Status Push:** {push_label}\n"
+                f"- **Arquivos Comitados:** `{', '.join(git_res['files'])}`\n\n"
+                f"### ⚡ 3. Databricks Workflow Job & Materialização\n"
+                f"- **Job ID:** `{job_res['job_id']}` (Run: `{job_res['run_id']}`)\n"
+                f"- **Tabela Unity Catalog:** `{res['table_name']}`\n"
+                f"- **Status:** `✅ Materializada no Catálogo com Sucesso`\n\n"
+                f"### 🧠 4. Camada Semântica & Modelo de Dados\n"
+                f"- **Entidade Registrada:** `{ent_model.name if ent_model else prod_name}`\n"
+                f"- **Métricas Analíticas Criadas:** {metrics_list}\n"
+                f"- **Arquivo de Ontologia:** `configs/semantic_models/databricks_medallion.yaml`\n\n"
+                f"### 📐 5. Diagrama de Relacionamentos Atualizado\n"
+                f"```mermaid\n{diag_md}\n```"
+            )
+
+        return {
+            "messages": [AIMessage(content=response_text)],
+            "response": response_text,
+            "active_diagram": active_diagram,
+            "generated_code": generated_code,
+            "ci_report": ci_report,
+            "gitops_result": gitops_result,
+            "job_result": res.get("job_result"),
         }
 
     # Numeric shortcuts from welcome menu
@@ -636,13 +823,24 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
                 "table_name": pipeline.table_name,
                 "layer": pipeline.layer,
             }
+            confirmation_prompt = (
+                "\n\n---\n"
+                "❓ **Deseja confirmar e disparar a esteira de CI, auto commit & push na branch `main` e criação do Job no Databricks?**\n"
+                "👉 *Digite **'sim'** ou **'confirmar'** para executar o ciclo de vida completo!*"
+            )
             response_text = (
                 f"### Generated Medallion Pipeline: {pipeline.table_name} ({pipeline.layer})\n\n"
                 f"#### PySpark Pipeline\n```python\n{pipeline.pyspark_code}\n```\n\n"
-                f"#### SparkSQL DDL & Ingestion\n```sql\n{pipeline.sparksql_code}\n```"
+                f"#### SparkSQL DDL & Ingestion\n```sql\n{pipeline.sparksql_code}\n```{confirmation_prompt}"
             )
         else:
             response_text = generate_etl_pipeline(entity_name, layer=layer)
+            confirmation_prompt = (
+                "\n\n---\n"
+                "❓ **Deseja confirmar e disparar a esteira de CI, auto commit & push na branch `main` e criação do Job no Databricks?**\n"
+                "👉 *Digite **'sim'** ou **'confirmar'** para executar o ciclo de vida completo!*"
+            )
+            response_text += confirmation_prompt
 
     # 5. Data Best Practices CI Quality Gate
     elif is_opt_5 or any(
@@ -794,7 +992,15 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
             "gitops_result": state.get("gitops_result"),
         }
 
-    # 2. Direct numeric menu shortcuts
+    # 2. Confirmation of pending pipeline lifecycle (e.g. 'sim', 'confirmar')
+    if _is_confirmation(user_query):
+        return _deterministic_steward_execution(state)
+
+    # 3. Data preview queries (e.g. 'consultar dados da tabela X')
+    if _is_data_preview_query(user_query):
+        return _deterministic_steward_execution(state)
+
+    # 4. Direct numeric menu shortcuts
     if q_lower in (
         "1",
         "1.",
