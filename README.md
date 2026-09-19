@@ -14,55 +14,10 @@
 
 ### 1. Arquitetura Geral da Solução
 
-```mermaid
-flowchart TD
-    subgraph UI ["Interface & Visualização"]
-        OWUI["Open WebUI Chat\n(open_webui_pipe.py)"]
-        MERMAID_UI["Renderizador Nativo Mermaid.js\n(erDiagram & graph LR)"]
-    end
+```markdown
+> **[🖼️ Clique aqui para visualizar a Arquitetura Interativa no Draw.io](https://viewer.diagrams.net/?url=https://raw.githubusercontent.com/Helfstein-one/databricks-steward-agent/main/docs/architecture.drawio)**
 
-    subgraph Core ["Orquestração & Modelos Locais"]
-        PIPE["Open WebUI Pipe\n(Valves Administrativas)"]
-        LANGGRAPH["LangGraph Agent Workflow\n(src/agent/graph.py)"]
-        LOCAL_LLM["Modelo Local (Ollama / vLLM)\n(ex: Qwen 2.5 Coder / Llama 3)"]
-    end
-
-    subgraph Knowledge ["Conhecimento & Metadados"]
-        UC["Databricks Unity Catalog\n(Schemas, Tabelas, Chaves)"]
-        SEM["Camada Semântica Declarativa\n(YAML: Dimensões, Métricas, Joins)"]
-        COMPILER["Compilador SparkSQL Seguro\n(Proteção NULLIF contra Divisão por Zero)"]
-    end
-
-    subgraph ETL_Medallion ["Engenharia de Dados (Lakehouse)"]
-        BRONZE["Bronze Layer (Ingestão Raw & Schema Enforcement)"]
-        SILVER["Silver Layer (Limpeza & Deduplicação)"]
-        GOLD["Gold Layer (KPIs Analíticos & Agregações)"]
-    end
-
-    subgraph QualityGate ["Esteira de CI (Boas Práticas de Dados)"]
-        RUFF["Ruff Linter & Formatter (Python/PySpark)"]
-        SQLF["SQLFluff (Dialeto SparkSQL)"]
-        ANTI["Detector de Anti-Patterns\n(collect, cross-join, toPandas)"]
-    end
-
-    subgraph GitOpsLayer ["GitOps & Entrega Contínua"]
-        BRANCH["Feature Branch Automática\n(feature/data-product-name)"]
-        COMMIT["Conventional Commit (feat: ...)"]
-        PR["Abertura de GitHub Pull Request\n(c/ Relatório de CI & Diagrama)"]
-    end
-
-    OWUI <--> PIPE
-    OWUI --- MERMAID_UI
-    PIPE <--> LANGGRAPH
-    LANGGRAPH <--> LOCAL_LLM
-    LANGGRAPH --> UC
-    LANGGRAPH --> SEM
-    SEM --> COMPILER
-    LANGGRAPH --> BRONZE & SILVER & GOLD
-    BRONZE & SILVER & GOLD --> QualityGate
-    QualityGate --> RUFF & SQLF & ANTI
-    QualityGate -->|Aprovado| GitOpsLayer
-    GitOpsLayer --> BRANCH --> COMMIT --> PR
+*(Você também pode abrir o arquivo [`docs/architecture.drawio`](docs/architecture.drawio) diretamente no seu VSCode utilizando a extensão oficial do Draw.io. O modelo foi construído utilizando os ícones oficiais do Databricks, LangChain, Open WebUI e GitHub).*
 ```
 
 ---
