@@ -179,9 +179,18 @@ class DatabricksCEClient:
                 warehouse_id=target_wh,
                 wait_timeout="30s",
             )
+            status_obj = getattr(response, "status", None)
+            state_val = getattr(status_obj, "state", "UNKNOWN")
+            
+            error_msg = None
+            if str(state_val) == "StatementState.FAILED" or str(state_val) == "FAILED":
+                err_obj = getattr(status_obj, "error", None)
+                error_msg = getattr(err_obj, "message", "Unknown SQL execution error")
+
             return {
                 "statement_id": getattr(response, "statement_id", None),
-                "status": getattr(getattr(response, "status", None), "state", "UNKNOWN"),
+                "status": state_val,
+                "error": error_msg,
                 "result": getattr(response, "result", None),
                 "manifest": getattr(response, "manifest", None),
             }
@@ -233,6 +242,17 @@ class DatabricksCEClient:
 
         query = f"SELECT * FROM {full_name} LIMIT {int(limit)};"
         resp = self.execute_query(query, warehouse_id=wh_id)
+        
+        if resp.get("error"):
+            md_table = f"❌ **Erro ao consultar Databricks:**\n```text\n{resp['error']}\n```"
+            return {
+                "table_name": full_name,
+                "columns": [],
+                "row_count": 0,
+                "rows": [],
+                "markdown_table": md_table,
+            }
+
         raw_res = resp.get("result")
         raw_manifest = resp.get("manifest")
         data_array = getattr(raw_res, "data_array", []) if raw_res else []
