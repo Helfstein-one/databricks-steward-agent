@@ -969,6 +969,51 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
     }
 
 
+def _synthesize_conversational_response(
+    det_result: dict[str, Any], client: Any, user_query: str
+) -> dict[str, Any]:
+    """Wrap deterministic structured output with a conversational LLM intro and outro."""
+    raw_response = det_result.get("response", "")
+    if not raw_response or not client:
+        return det_result
+
+    # Don't synthesize short or simple greeting texts
+    if len(raw_response) < 100 or "Opção Inválida" in raw_response:
+        return det_result
+
+    system_prompt = (
+        "Você é o Databricks Steward Agent, um especialista em governança e engenharia de dados.\n"
+        "Você receberá uma 'Resposta Estruturada do Sistema' (contendo tabelas Markdown, blocos de código PySpark/SQL ou diagramas Mermaid) e a 'Pergunta do Usuário'.\n"
+        "Sua tarefa é repassar a resposta estruturada EXATAMENTE como está, mas adicionando uma introdução amigável e uma conclusão proativa (sugerindo o próximo passo lógico).\n"
+        "Regras CRÍTICAS:\n"
+        "1. NUNCA altere, resuma ou remova qualquer tabela Markdown.\n"
+        "2. NUNCA altere ou remova blocos de código (```python, ```sql, etc).\n"
+        "3. NUNCA altere ou remova diagramas (```mermaid).\n"
+        "4. Mantenha o conteúdo técnico intacto e apenas 'abrace' ele com texto humano.\n"
+        "5. Responda em português."
+    )
+    user_prompt = f"Pergunta do Usuário: {user_query}\n\nResposta Estruturada do Sistema:\n{raw_response}"
+
+    try:
+        llm_res = client.invoke(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+        )
+        synthesized_text = str(llm_res.content).strip()
+        # Fallback if the LLM hallucinated and removed the core code blocks/tables
+        if "```" in raw_response and "```" not in synthesized_text:
+            return det_result
+
+        det_result["response"] = synthesized_text
+        det_result["messages"] = [AIMessage(content=synthesized_text)]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Falha ao sintetizar resposta conversacional: %s", e)
+
+    return det_result
+
+
 def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, Any]:
     """Main routing and execution node for the Databricks Steward Agent."""
     client = llm or get_local_chat_client()
@@ -993,11 +1038,13 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
 
     # 2. Confirmation of pending pipeline lifecycle (e.g. 'sim', 'confirmar')
     if _is_confirmation(user_query):
-        return _deterministic_steward_execution(state)
+        res = _deterministic_steward_execution(state)
+        return _synthesize_conversational_response(res, client, user_query)
 
     # 3. Data preview queries (e.g. 'consultar dados da tabela X')
     if _is_data_preview_query(user_query):
-        return _deterministic_steward_execution(state)
+        res = _deterministic_steward_execution(state)
+        return _synthesize_conversational_response(res, client, user_query)
 
     # 4. Direct numeric menu shortcuts
     if q_lower in (
@@ -1026,7 +1073,8 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
         "opcao 6",
         "opção 6",
     ):
-        return _deterministic_steward_execution(state)
+        res = _deterministic_steward_execution(state)
+        return _synthesize_conversational_response(res, client, user_query)
 
     now = time.time()
     cached = _availability_cache.get(cache_key)
@@ -1086,7 +1134,8 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                 logger.debug(
                     "Local LLM offline or unreachable (%s); using deterministic welcome.", e
                 )
-        return _deterministic_steward_execution(state)
+        res = _deterministic_steward_execution(state)
+        return _synthesize_conversational_response(res, client, user_query)
 
     # 4. Conceptual and educational inquiries (answered without tool binding)
     if _is_conceptual_question(user_query):
@@ -1131,11 +1180,13 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                     "Local LLM conceptual call failed (%s); using deterministic router.", e
                 )
 
-        return _deterministic_steward_execution(state)
+        res = _deterministic_steward_execution(state)
+        return _synthesize_conversational_response(res, client, user_query)
 
     # 5. Entity modeling queries (e.g. "qual a modelagem de customers", "schema da tabela orders")
     if _is_entity_modeling_query(user_query):
-        return _deterministic_steward_execution(state)
+        res = _deterministic_steward_execution(state)
+        return _synthesize_conversational_response(res, client, user_query)
 
     # 6. Technical queries: LLM with tool calling
     if is_available:
@@ -1219,8 +1270,9 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                 "Local LLM offline or unreachable (%s); using deterministic steward router.", e
             )
 
-    # 5. Deterministic fallback
-    return _deterministic_steward_execution(state)
+    # 7. Deterministic fallback
+    res = _deterministic_steward_execution(state)
+    return _synthesize_conversational_response(res, client, user_query)
 
 
 def create_steward_graph(llm: ChatOpenAI | None = None) -> Any:
