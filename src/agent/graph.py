@@ -15,6 +15,8 @@ from langgraph.graph import END, START, StateGraph
 
 from src.agent.state import AgentState
 from src.agent.tools import (
+    ENTITY_ALIAS_MAP,
+    format_entity_modeling,
     generate_diagram,
     generate_etl_pipeline,
     get_langchain_tools,
@@ -258,6 +260,55 @@ def _get_conceptual_explanation(query: str) -> str | None:
     return None
 
 
+def _extract_entity_from_query(query: str) -> str | None:
+    """Extract canonical entity name from query using synonym dictionary."""
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+
+    # First check aliases sorted by length descending so longer phrases match first
+    sorted_aliases = sorted(ENTITY_ALIAS_MAP.keys(), key=len, reverse=True)
+    for alias in sorted_aliases:
+        pattern = r"(?:\b|_)" + re.escape(alias) + r"(?:\b|_)"
+        if re.search(pattern, q):
+            return ENTITY_ALIAS_MAP[alias]
+
+    return None
+
+
+def _is_entity_modeling_query(query: str) -> bool:
+    """Check if query is asking for the schema, structure, or data modeling of a specific entity/table."""
+    q = (query or "").strip().lower()
+    if not q:
+        return False
+
+    # Avoid stealing queries meant for ETL generation, CI, GitOps, or pure Lineage diagrams
+    if any(k in q for k in ("pipeline", "etl", "pyspark", "sparksql", "linhagem", "lineage", "fluxo", "gitops", "pull request", "pr ")):
+        return False
+
+    # If asking general conceptual question like "o que é modelagem?"
+    if re.match(r"^(o\s+que\s+[ée]|what\s+is)\s+(a\s+)?modelagem\b", q):
+        return False
+
+    entity = _extract_entity_from_query(q)
+    if not entity:
+        return False
+
+    # If query is essentially just the entity name (e.g. "customers", "tabela customers", "tabela de clientes")
+    clean = re.sub(r"^(a\s+|o\s+|da\s+|do\s+|de\s+)?(tabela|table|entidade|entity)\s+(da\s+|do\s+|de\s+)?", "", q).strip()
+    clean = re.sub(r"^(de\s+|da\s+|do\s+)", "", clean).strip()
+    if clean in ENTITY_ALIAS_MAP or clean == entity:
+        return True
+
+    modeling_keywords = (
+        "modelagem", "modelo", "schema", "esquema", "estrutura",
+        "colunas", "coluna", "campos", "kpis", "métricas", "metricas",
+        "detalhes", "modeling", "erd", "erdiagram", "tabela", "table",
+        "atributos", "campos da", "dados de", "dados da",
+    )
+    return any(k in q for k in modeling_keywords)
+
+
 def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
     """Fallback deterministic rule-based router executing steward capabilities."""
     messages = state.get("messages", [])
@@ -295,6 +346,21 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
                 "gitops_result": gitops_result,
             }
 
+    # Entity-specific data modeling / schema requests (e.g. "qual a modelagem de customers")
+    if _is_entity_modeling_query(user_query):
+        ent_name = _extract_entity_from_query(user_query) or "customers"
+        resp = format_entity_modeling(ent_name)
+        m_match = re.search(r"```mermaid\n(.*?)\n```", resp, re.DOTALL)
+        diag = f"```mermaid\n{m_match.group(1)}\n```" if m_match else active_diagram
+        return {
+            "messages": [AIMessage(content=resp)],
+            "response": resp,
+            "active_diagram": diag,
+            "generated_code": generated_code,
+            "ci_report": ci_report,
+            "gitops_result": gitops_result,
+        }
+
     # Numeric shortcuts from welcome menu
     is_opt_1 = q_lower in ("1", "1.", "opcao 1", "opção 1")
     is_opt_2 = q_lower in ("2", "2.", "opcao 2", "opção 2")
@@ -305,8 +371,11 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
 
     # 1. Mermaid Diagram Generation (Option 3)
     if is_opt_3 or any(k in q_lower for k in ("diagram", "diagrama", "erd", "erdiagram", "mermaid", "lineage", "desenhar", "modelo visual")):
+        ent = _extract_entity_from_query(user_query)
         if "lineage" in q_lower or "fluxo" in q_lower or "medallion" in q_lower:
             diag = generate_diagram("lineage")
+        elif ent:
+            diag = generate_diagram("er", domain=ent)
         elif "sales" in q_lower or "vendas" in q_lower:
             diag = generate_diagram("er", domain="sales_lakehouse")
         else:
@@ -559,7 +628,11 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
 
         return _deterministic_steward_execution(state)
 
-    # 5. Technical queries: LLM with tool calling
+    # 5. Entity modeling queries (e.g. "qual a modelagem de customers", "schema da tabela orders")
+    if _is_entity_modeling_query(user_query):
+        return _deterministic_steward_execution(state)
+
+    # 6. Technical queries: LLM with tool calling
     if is_available:
         try:
             tools = get_langchain_tools()
@@ -587,6 +660,10 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                         results.append(str(t_output))
                         if t_name == "generate_diagram_tool":
                             active_diagram = str(t_output)
+                        elif t_name == "inspect_entity_modeling_tool":
+                            m_match = re.search(r"```mermaid\n(.*?)\n```", str(t_output), re.DOTALL)
+                            if m_match:
+                                active_diagram = f"```mermaid\n{m_match.group(1)}\n```"
                         elif t_name == "generate_etl_pipeline_tool":
                             ent = t_args.get("entity_name", "facilities")
                             lyr = t_args.get("layer", "silver")

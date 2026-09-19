@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,81 @@ from src.gitops.github_pr import create_data_product_pr
 from src.semantic.compiler import SemanticQueryCompiler
 from src.semantic.registry import SemanticRegistry
 from src.visualizer.mermaid import generate_er_diagram, generate_lineage_diagram
+
+ENTITY_ALIAS_MAP: dict[str, str] = {
+    # Customers / Clientes
+    "customers": "customers",
+    "customer": "customers",
+    "cliente": "customers",
+    "clientes": "customers",
+    "compradores": "customers",
+    "buyers": "customers",
+    # Orders / Pedidos
+    "orders": "orders",
+    "order": "orders",
+    "pedido": "orders",
+    "pedidos": "orders",
+    "sales_orders": "orders",
+    # Order Items / Itens de Pedido
+    "order_items": "order_items",
+    "order-items": "order_items",
+    "order items": "order_items",
+    "order_item": "order_items",
+    "order item": "order_items",
+    "item de pedido": "order_items",
+    "itens de pedido": "order_items",
+    "itens do pedido": "order_items",
+    # Products / Produtos
+    "products": "products",
+    "product": "products",
+    "produto": "products",
+    "produtos": "products",
+    # Facilities / Linhas de Crédito
+    "facilities": "facilities",
+    "facility": "facilities",
+    "credit_facilities": "facilities",
+    "credit facilities": "facilities",
+    "linha de credito": "facilities",
+    "linhas de credito": "facilities",
+    "linha de crédito": "facilities",
+    "linhas de crédito": "facilities",
+    "facilidades": "facilities",
+    "contracts": "facilities",
+    # Borrowers / Tomadores
+    "borrowers": "borrowers",
+    "borrower": "borrowers",
+    "tomador": "borrowers",
+    "tomadores": "borrowers",
+    # Impairments / Provisões
+    "impairments": "impairments",
+    "impairment": "impairments",
+    "provisao": "impairments",
+    "provisão": "impairments",
+    "provisoes": "impairments",
+    "provisões": "impairments",
+    "perdas": "impairments",
+    # Lakehouse sample tables
+    "silver_transactions": "silver_transactions",
+    "bronze_raw_transactions": "bronze_raw_transactions",
+    "gold_risk_metrics": "gold_risk_metrics",
+    "transactions": "silver_transactions",
+    "transações": "silver_transactions",
+    "transacoes": "silver_transactions",
+}
+
+DOMAIN_ALIAS_MAP: dict[str, str] = {
+    "sales": "sales_lakehouse",
+    "vendas": "sales_lakehouse",
+    "retail": "sales_lakehouse",
+    "varejo": "sales_lakehouse",
+    "sales_lakehouse": "sales_lakehouse",
+    "credit": "corporate_credit",
+    "credito": "corporate_credit",
+    "crédito": "corporate_credit",
+    "corporate_credit": "corporate_credit",
+    "corporate": "corporate_credit",
+    "wholesale": "corporate_credit",
+}
 
 
 def inspect_unity_catalog(catalog: str = "main", schema: str = "default") -> str:
@@ -64,28 +140,178 @@ def query_semantic_layer(
         return f"Error compiling semantic query: {e}"
 
 
+def format_entity_modeling(entity_name: str) -> str:
+    """Format detailed data modeling, dimensions, metrics, and ER diagram for a specific entity."""
+    reg = SemanticRegistry(settings.semantic_models_path)
+    clean_name = (entity_name or "").strip().lower()
+
+    # Normalize prefixes like "tabela ", "table ", "entidade ", "entity ", "da tabela ", "de "
+    clean_name = re.sub(
+        r"^(a\s+|o\s+|da\s+|do\s+|de\s+)?(tabela|table|entidade|entity)\s+(da\s+|do\s+|de\s+)?",
+        "",
+        clean_name,
+    ).strip()
+    clean_name = re.sub(r"^(de\s+|da\s+|do\s+)", "", clean_name).strip()
+
+    target_name = ENTITY_ALIAS_MAP.get(clean_name, clean_name)
+    entity = reg.get_entity(target_name)
+
+    if not entity:
+        # Search for any known entity alias within the string
+        sorted_aliases = sorted(ENTITY_ALIAS_MAP.keys(), key=len, reverse=True)
+        for alias in sorted_aliases:
+            pattern = r"(?:\b|_)" + re.escape(alias) + r"(?:\b|_)"
+            if re.search(pattern, clean_name):
+                matched_target = ENTITY_ALIAS_MAP[alias]
+                e_found = reg.get_entity(matched_target)
+                if e_found:
+                    entity = e_found
+                    target_name = matched_target
+                    break
+
+    if not entity:
+        if target_name.endswith("s"):
+            entity = reg.get_entity(target_name[:-1])
+        else:
+            entity = reg.get_entity(target_name + "s")
+
+    if not entity:
+        from src.databricks.introspector import _build_mock_entities
+
+        mock_ents = {e.name.lower(): e for e in _build_mock_entities()}
+        e_obj = mock_ents.get(target_name.lower())
+        if e_obj:
+            cols = "\n".join([f"| `{c.name}` | `{c.type.upper()}` | {c.comment or 'Coluna de dados'} |" for c in e_obj.columns])
+            return (
+                f"### 📐 Modelagem de Dados: `{e_obj.name}`\n\n"
+                f"- **Tabela Lakehouse:** `{e_obj.catalog}.{e_obj.schema_name}.{e_obj.name}`\n"
+                f"- **Camada Medalhão:** `{e_obj.layer or 'unassigned'}`\n\n"
+                f"#### 📋 Colunas:\n"
+                f"| Coluna | Tipo | Descrição |\n"
+                f"|---|---|---|\n"
+                f"{cols}\n\n"
+                f"💡 **Próximos passos:**\n"
+                f"- Peça *'gerar pipeline etl para {e_obj.name}'* para criar a ingestão PySpark / SparkSQL.\n"
+                f"- Peça *'validar código na esteira de ci'* para testar as regras de engenharia de dados."
+            )
+        return f"Entidade ou tabela '{entity_name}' não encontrada no catálogo nem na camada semântica."
+
+    domain_name = ""
+    for d_key, d_obj in reg.domains.items():
+        if any(e.name == entity.name for e in d_obj.entities):
+            domain_name = d_key
+            break
+
+    dim_rows = []
+    for d in entity.dimensions:
+        is_pk = " **[PK]**" if d.name == entity.primary_key else ""
+        if d.description:
+            desc = d.description
+        elif is_pk:
+            desc = "Chave primária única da entidade"
+        elif d.name.endswith("_id"):
+            desc = f"Identificador de relacionamento ({d.name})"
+        elif d.name.endswith("_date") or d.name.endswith("_at"):
+            desc = f"Data / timestamp temporal ({d.name})"
+        elif d.name in ("status", "segment", "country", "channel", "category", "currency", "product_type"):
+            desc = f"Atributo categórico de negócio ({d.name})"
+        else:
+            desc = f"Coluna dimensional {d.name}"
+        dim_rows.append(f"| `{d.name}` | `{d.type.upper()}` |{is_pk} {desc} |")
+    dim_table = "\n".join(dim_rows)
+
+    metric_lines = []
+    if entity.metrics:
+        for m in entity.metrics:
+            m_desc = f" — {m.description}" if m.description else ""
+            metric_lines.append(f"- **`{m.name}`**: `{m.sql}`{m_desc}")
+        metrics_section = "\n".join(metric_lines)
+    else:
+        metrics_section = "_Nenhuma métrica agregada registrada diretamente nesta entidade._"
+
+    all_rels = reg.list_relationships(domain_name)
+    relevant_rels = [r for r in all_rels if r.from_entity == entity.name or r.to_entity == entity.name]
+    if relevant_rels:
+        rel_lines = [f"- `{r.from_entity}.{r.from_column}` → `{r.to_entity}.{r.to_column}` (`{r.type}`)" for r in relevant_rels]
+        rels_section = "\n".join(rel_lines)
+    else:
+        rels_section = "_Entidade sem chaves estrangeiras diretas registradas._"
+
+    related_names = set([entity.name] + [r.from_entity for r in relevant_rels] + [r.to_entity for r in relevant_rels])
+    related_entities = [reg.get_entity(n) for n in related_names if reg.get_entity(n)]
+    diag = generate_er_diagram(related_entities, relevant_rels)
+
+    domain_label = f"`{domain_name}`" if domain_name else "Lakehouse"
+
+    return (
+        f"### 📐 Modelagem de Dados: `{entity.name}`\n\n"
+        f"- **Tabela Lakehouse:** `{entity.table_name}`\n"
+        f"- **Domínio Semântico:** {domain_label}\n"
+        f"- **Chave Primária (PK):** `{entity.primary_key}`\n\n"
+        f"#### 📋 Colunas e Dimensões:\n"
+        f"| Coluna | Tipo | Descrição |\n"
+        f"|---|---|---|\n"
+        f"{dim_table}\n\n"
+        f"#### 📊 Métricas Analíticas de Negócio:\n"
+        f"{metrics_section}\n\n"
+        f"#### 🔗 Relacionamentos (Joins):\n"
+        f"{rels_section}\n\n"
+        f"#### 📊 Diagrama de Entidade-Relacionamento:\n"
+        f"```mermaid\n{diag}\n```\n\n"
+        f"💡 **Próximos passos com `{entity.name}`:**\n"
+        f"- Peça *'gerar pipeline etl para {entity.name}'* para criar a ingestão PySpark / SparkSQL.\n"
+        f"- Peça *'compilar query de métricas para {entity.name}'* para gerar consultas analíticas com joins automáticos.\n"
+        f"- Peça *'validar código na esteira de ci'* para testar as regras de engenharia de dados."
+    )
+
+
 def generate_diagram(diagram_type: str = "er", domain: str | None = None) -> str:
     """Generate Mermaid erDiagram (Crow's foot) or Medallion lineage flowchart."""
     reg = SemanticRegistry(settings.semantic_models_path)
+    dt = (diagram_type or "er").strip().lower()
 
-    # If domain specified, retrieve domain entities
+    # Determine if Lineage flowchart or ER diagram
+    is_lineage = any(k in dt for k in ("lineage", "linhagem", "fluxo", "medallion", "flowchart"))
+
+    entities = []
+    relationships = []
+
+    # If domain specified, resolve domain alias or entity focus
     if domain:
-        dom = reg.get_domain(domain)
-        entities = dom.entities if dom else reg.list_entities()
-        relationships = dom.relationships if dom else reg.list_relationships()
-    else:
+        clean_dom = domain.strip().lower()
+        resolved_domain = DOMAIN_ALIAS_MAP.get(clean_dom, clean_dom)
+        dom = reg.get_domain(resolved_domain)
+        if dom:
+            entities = dom.entities
+            relationships = dom.relationships
+        else:
+            target_ent = ENTITY_ALIAS_MAP.get(clean_dom, clean_dom)
+            ent = reg.get_entity(target_ent)
+            if ent:
+                d_name = ""
+                for d_k, d_v in reg.domains.items():
+                    if any(e.name == ent.name for e in d_v.entities):
+                        d_name = d_k
+                        break
+                all_rels = reg.list_relationships(d_name)
+                relationships = [r for r in all_rels if r.from_entity == ent.name or r.to_entity == ent.name]
+                related_names = set([ent.name] + [r.from_entity for r in relationships] + [r.to_entity for r in relationships])
+                entities = [reg.get_entity(n) for n in related_names if reg.get_entity(n)]
+
+    if not entities:
         entities = reg.list_entities()
         relationships = reg.list_relationships()
 
     if not entities:
         from src.databricks.introspector import _build_mock_entities
+
         entities = _build_mock_entities()
         relationships = []
 
-    if diagram_type.lower() in ("er", "erd", "erdiagram"):
-        mermaid_code = generate_er_diagram(entities, relationships)
-    else:
+    if is_lineage:
         mermaid_code = generate_lineage_diagram(entities)
+    else:
+        mermaid_code = generate_er_diagram(entities, relationships)
 
     return f"```mermaid\n{mermaid_code}\n```"
 
@@ -188,6 +414,11 @@ STEWARD_TOOLS: list[dict[str, Any]] = [
         "description": "Run CI and create GitHub feature branch, commit, and Pull Request.",
         "func": submit_gitops_pr,
     },
+    {
+        "name": "format_entity_modeling",
+        "description": "Format detailed modeling, dimensions, metrics, and ER diagram for a table or entity.",
+        "func": format_entity_modeling,
+    },
 ]
 
 
@@ -247,6 +478,12 @@ def submit_gitops_pr_tool(
     )
 
 
+@tool
+def inspect_entity_modeling_tool(entity_name: str) -> str:
+    """Inspect detailed data modeling, dimensions, metrics, and ER diagram for a specific table or entity."""
+    return format_entity_modeling(entity_name)
+
+
 LANGCHAIN_TOOLS = [
     inspect_unity_catalog_tool,
     load_semantic_models_tool,
@@ -255,6 +492,7 @@ LANGCHAIN_TOOLS = [
     generate_etl_pipeline_tool,
     run_ci_tool,
     submit_gitops_pr_tool,
+    inspect_entity_modeling_tool,
 ]
 
 

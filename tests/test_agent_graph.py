@@ -265,3 +265,64 @@ def test_steward_node_conceptual_explanations():
     })
     assert "Mermaid.js" in m_out["response"]
     assert "erDiagram" in m_out["response"]
+
+
+def test_steward_node_entity_modeling_queries():
+    """Verify specific table modeling queries return detailed columns, PK, metrics, and erDiagram."""
+    # 1. Customers modeling
+    cust_out = steward_node({
+        "messages": [{"role": "user", "content": "qual a modelagem de customers"}],
+        "user_query": "qual a modelagem de customers",
+    })
+    assert "### 📐 Modelagem de Dados: `customers`" in cust_out["response"]
+    assert "main.sales.customers" in cust_out["response"]
+    assert "sales_lakehouse" in cust_out["response"]
+    assert "customer_id" in cust_out["response"]
+    assert "total_customers" in cust_out["response"]
+    assert "erDiagram" in cust_out["response"]
+    assert cust_out["active_diagram"] is not None
+    assert "erDiagram" in cust_out["active_diagram"]
+
+    # 2. Orders table modeling
+    orders_out = steward_node({
+        "messages": [{"role": "user", "content": "qual a modelagem da tabela orders"}],
+        "user_query": "qual a modelagem da tabela orders",
+    })
+    assert "### 📐 Modelagem de Dados: `orders`" in orders_out["response"]
+    assert "main.sales.orders" in orders_out["response"]
+    assert "order_id" in orders_out["response"]
+    assert "total_orders" in orders_out["response"]
+    assert "erDiagram" in orders_out["active_diagram"]
+
+    # 3. Facilities schema
+    fac_out = steward_node({
+        "messages": [{"role": "user", "content": "schema de facilities"}],
+        "user_query": "schema de facilities",
+    })
+    assert "### 📐 Modelagem de Dados: `facilities`" in fac_out["response"]
+    assert "main.corporate_credit.credit_facilities" in fac_out["response"]
+    assert "facility_id" in fac_out["response"]
+    assert "utilization_rate" in fac_out["response"]
+    assert "erDiagram" in fac_out["active_diagram"]
+
+    # 4. Impairments structure
+    imp_out = steward_node({
+        "messages": [{"role": "user", "content": "estrutura da tabela impairments"}],
+        "user_query": "estrutura da tabela impairments",
+    })
+    assert "### 📐 Modelagem de Dados: `impairments`" in imp_out["response"]
+    assert "main.corporate_credit.impairments" in imp_out["response"]
+    assert "impairment_id" in imp_out["response"]
+
+
+def test_generate_diagram_modelagem_keyword():
+    """Verify diagram_type='modelagem' generates erDiagram instead of lineage flowchart."""
+    from src.agent.tools import generate_diagram
+
+    diag_modelagem = generate_diagram("modelagem")
+    assert "erDiagram" in diag_modelagem
+    assert "graph LR" not in diag_modelagem
+
+    diag_cust = generate_diagram("er", domain="customers")
+    assert "erDiagram" in diag_cust
+    assert "customers {" in diag_cust
