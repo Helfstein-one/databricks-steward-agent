@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.workspace import ImportFormat
+from databricks.sdk.errors import DatabricksError
+from databricks.sdk.service.jobs import Source, SqlTask, SqlTaskFile, Task
+from databricks.sdk.service.workspace import ImportFormat, Language
 
 from src.config import settings
 
@@ -169,7 +171,7 @@ class DatabricksCEClient:
         if not self.client:
             raise DatabricksConnectionError("Databricks client not initialized.")
 
-        target_wh = warehouse_id or self.warehouse_id
+        target_wh = warehouse_id or self.warehouse_id or self.get_default_warehouse_id()
         if not target_wh:
             raise DatabricksClientError("No Databricks warehouse_id configured or provided.")
 
@@ -205,6 +207,11 @@ class DatabricksCEClient:
             return ""
         try:
             whs = list(self.client.warehouses.list())
+            for wh in whs:
+                state_str = str(getattr(wh, "state", ""))
+                if "RUNNING" in state_str:
+                    self.warehouse_id = str(wh.id)
+                    return self.warehouse_id
             if whs:
                 self.warehouse_id = str(whs[0].id)
                 return self.warehouse_id
@@ -216,7 +223,7 @@ class DatabricksCEClient:
         self, table_name: str, limit: int = 10, warehouse_id: str | None = None
     ) -> dict[str, Any]:
         """Execute a preview query (LIMIT) on the table and format as markdown."""
-        wh_id = warehouse_id or self.get_default_warehouse_id()
+        wh_id = warehouse_id or self.warehouse_id or self.get_default_warehouse_id()
         if not wh_id or not self.client:
             # Fallback mock for offline tests
             clean_name = table_name.split(".")[-1]
@@ -238,11 +245,28 @@ class DatabricksCEClient:
 
         full_name = table_name.strip()
         if "." not in full_name:
-            full_name = f"{settings.databricks_default_catalog}.{settings.databricks_default_schema}.{full_name}"
+            catalog = settings.databricks_default_catalog
+            if catalog == "main" and self.client:
+                try:
+                    cats = [c.name for c in self.client.catalogs.list()]
+                    if "main" not in cats and "workspace" in cats:
+                        catalog = "workspace"
+                except (DatabricksError, AttributeError) as exc:
+                    logger.debug("Failed to query workspace catalogs: %s", exc)
+            full_name = f"{catalog}.{settings.databricks_default_schema}.{full_name}"
 
         query = f"SELECT * FROM {full_name} LIMIT {int(limit)};"
-        resp = self.execute_query(query, warehouse_id=wh_id)
-        
+        try:
+            resp = self.execute_query(query, warehouse_id=wh_id)
+        except DatabricksClientError as exc:
+            return {
+                "table_name": full_name,
+                "columns": [],
+                "row_count": 0,
+                "rows": [],
+                "markdown_table": f"❌ **Erro ao consultar Databricks:**\n```text\n{exc}\n```",
+            }
+
         if resp.get("error"):
             md_table = f"❌ **Erro ao consultar Databricks:**\n```text\n{resp['error']}\n```"
             return {
@@ -255,7 +279,8 @@ class DatabricksCEClient:
 
         raw_res = resp.get("result")
         raw_manifest = resp.get("manifest")
-        data_array = getattr(raw_res, "data_array", []) if raw_res else []
+        raw_data = getattr(raw_res, "data_array", None)
+        data_array = raw_data if raw_data is not None else []
         schema_cols: list[str] = []
         if raw_manifest and hasattr(raw_manifest, "schema") and raw_manifest.schema:
             schema_cols = [c.name for c in raw_manifest.schema.columns]
@@ -290,7 +315,7 @@ class DatabricksCEClient:
         warehouse_id: str | None = None,
     ) -> dict[str, Any]:
         """Create or update a Databricks Workflow Job for data product materialization."""
-        wh_id = warehouse_id or self.get_default_warehouse_id()
+        wh_id = warehouse_id or self.warehouse_id or self.get_default_warehouse_id()
 
         # 1. Execute SQL statement on warehouse directly to ensure immediate Delta table creation
         if wh_id and self.client and sql_statement.strip():
@@ -316,16 +341,16 @@ class DatabricksCEClient:
             self.mkdirs(remote_base)
             self.client.workspace.import_(
                 path=remote_sql_path,
-                format=ImportFormat.SOURCE,
-                language="SQL",
+                format=ImportFormat.AUTO,
+                language=Language.SQL,
                 content=base64.b64encode(sql_statement.encode("utf-8")).decode("utf-8"),
                 overwrite=True,
             )
             if pyspark_code:
                 self.client.workspace.import_(
                     path=f"{remote_base}/etl.py",
-                    format=ImportFormat.SOURCE,
-                    language="PYTHON",
+                    format=ImportFormat.AUTO,
+                    language=Language.PYTHON,
                     content=base64.b64encode(pyspark_code.encode("utf-8")).decode("utf-8"),
                     overwrite=True,
                 )
@@ -335,14 +360,15 @@ class DatabricksCEClient:
         # 3. Create Databricks Job
         job_id_str = f"job-{product_slug}"
         try:
-            from databricks.sdk.service.jobs import SqlTask, SqlTaskFile, Task
-
             task = Task(
                 task_key=f"materialize_{product_slug.replace('-', '_')}",
                 description=f"Automated pipeline task for data product {product_slug}",
                 sql_task=SqlTask(
                     warehouse_id=wh_id,
-                    file=SqlTaskFile(path=remote_sql_path),
+                    file=SqlTaskFile(
+                        path=f"/Shared/pipelines/{product_slug}/schema.sql",
+                        source=Source.WORKSPACE,
+                    ),
                 )
                 if wh_id
                 else None,

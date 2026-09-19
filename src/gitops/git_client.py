@@ -105,7 +105,7 @@ class GitClient:
             dest.parent.mkdir(parents=True, exist_ok=True)
             with open(dest, "w", encoding="utf-8") as f:
                 f.write(content)
-            self._run_git(["add", str(dest)])
+            self._run_git(["add", "-f", str(dest)])
 
         cmd = [
             "-c",
