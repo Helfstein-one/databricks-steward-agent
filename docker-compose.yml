@@ -20,8 +20,8 @@ services:
       - DATABRICKS_DEFAULT_CATALOG=${DATABRICKS_DEFAULT_CATALOG:-main}
       - DATABRICKS_DEFAULT_SCHEMA=${DATABRICKS_DEFAULT_SCHEMA:-default}
       # Local LLM connection (pointing to host Ollama or containerized Ollama)
-      - LOCAL_LLM_BASE_URL=${LOCAL_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
-      - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-qwen2.5-coder:7b}
+      - LOCAL_LLM_BASE_URL=${LOCAL_LLM_BASE_URL:-http://host.containers.internal:11434/v1}
+      - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-llama3.2:3b}
       - LOCAL_LLM_API_KEY=${LOCAL_LLM_API_KEY:-ollama}
       - LOCAL_LLM_TEMPERATURE=${LOCAL_LLM_TEMPERATURE:-0.1}
       # GitHub GitOps

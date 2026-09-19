@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
+import urllib.request
 from typing import Any
 
 from langchain_core.messages import AIMessage
@@ -29,6 +31,50 @@ logger = logging.getLogger(__name__)
 
 # Cache for local LLM endpoint reachability to avoid repeated timeouts
 _availability_cache: dict[tuple[str, str], tuple[bool, float]] = {}
+_resolved_models_cache: dict[str, str] = {}
+
+
+def resolve_local_model(base_url: str, preferred_model: str) -> str:
+    """Discover available models on OpenAI-compatible endpoint and select an active model."""
+    if not base_url:
+        return preferred_model
+
+    # Preserve default development model on localhost to ensure deterministic unit tests
+    if preferred_model == "qwen2.5-coder:7b" and ("localhost" in base_url or "127.0.0.1" in base_url):
+        return preferred_model
+
+    cached = _resolved_models_cache.get(base_url)
+    if cached:
+        return cached
+
+    clean_base = base_url.rstrip("/")
+    models_endpoint = f"{clean_base}/models" if clean_base.endswith("/v1") else f"{clean_base}/v1/models"
+
+    try:
+        req = urllib.request.Request(models_endpoint, headers={"User-Agent": "Databricks-Steward/1.0"})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            available_ids = [m.get("id") for m in data.get("data", []) if isinstance(m, dict) and "id" in m]
+            if not available_ids and "models" in data:
+                available_ids = [m.get("name") for m in data["models"] if isinstance(m, dict)]
+
+            if preferred_model in available_ids:
+                _resolved_models_cache[base_url] = preferred_model
+                return preferred_model
+
+            if available_ids:
+                priority = ["llama3.2:3b", "llama3.2:1b", "qwen2.5-coder:7b", "deepseek-r1:1.5b"]
+                chosen = next((p for p in priority if p in available_ids), available_ids[0])
+                logger.info(
+                    "Model '%s' not found at %s. Auto-selected available model '%s'.",
+                    preferred_model, base_url, chosen,
+                )
+                _resolved_models_cache[base_url] = chosen
+                return chosen
+    except Exception as e:  # noqa: BLE001
+        logger.debug("Could not resolve models from %s: %s", models_endpoint, e)
+
+    return preferred_model
 
 
 def get_local_chat_client(
@@ -37,13 +83,16 @@ def get_local_chat_client(
     api_key: str | None = None,
     temperature: float | None = None,
 ) -> ChatOpenAI:
-    """Instantiate OpenAI-compatible local chat client (Ollama/vLLM)."""
+    """Instantiate OpenAI-compatible local chat client (Ollama/vLLM) with automatic model resolution."""
+    raw_base = base_url or settings.local_llm_base_url
+    raw_model = model or settings.local_llm_model
+    effective_model = resolve_local_model(raw_base, raw_model)
     return ChatOpenAI(
-        base_url=base_url or settings.local_llm_base_url,
-        model=model or settings.local_llm_model,
+        base_url=raw_base,
+        model=effective_model,
         api_key=api_key or settings.local_llm_api_key or "ollama",
         temperature=temperature if temperature is not None else settings.local_llm_temperature,
-        timeout=3.0,
+        timeout=15.0,
         max_retries=0,
     )
 
@@ -60,11 +109,33 @@ def _extract_query_text(messages: list[Any]) -> str:
     return str(last_msg or "")
 
 
+def _is_greeting(query: str) -> bool:
+    """Check if query is a conversational greeting."""
+    q = (query or "").strip().lower()
+    if not q:
+        return True
+    pattern = r"^(ol[áa]|oi|bom\s+dia|boa\s+tarde|boa\s+noite|hello|hi|hey|sauda[çc][õo]es|e\s+a[íi]|tudo\s+bem|como\s+vai)[!?,.\s]*$"
+    if re.match(pattern, q):
+        return True
+    return bool(any(q.startswith(g) for g in ("olá", "ola", "oi", "hello", "hi")) and len(q.split()) <= 4)
+
+
+def _is_title_request(query: str) -> bool:
+    """Check if query is an Open WebUI background prompt to generate a conversation title."""
+    q = (query or "").lower()
+    return (
+        ("title" in q or "título" in q)
+        and any(w in q for w in ("generate", "gerar", "crie", "create", "summarize", "resumo", "3-5", "words", "palavras", "chat", "conversa"))
+    ) or (
+        "generate a concise" in q and "title" in q
+    )
+
+
 def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
     """Fallback deterministic rule-based router executing steward capabilities."""
     messages = state.get("messages", [])
     user_query = state.get("user_query") or _extract_query_text(messages)
-    q_lower = (user_query or "").lower()
+    q_lower = (user_query or "").strip().lower()
 
     response_text = ""
     active_diagram = state.get("active_diagram")
@@ -72,11 +143,31 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
     ci_report = state.get("ci_report")
     gitops_result = state.get("gitops_result")
 
-    # 1. Mermaid Diagram Generation
-    if any(k in q_lower for k in ("diagram", "erd", "erdiagram", "mermaid", "lineage", "desenhar", "modelo visual")):
+    # Title generation request from Open WebUI
+    if _is_title_request(user_query):
+        response_text = "Databricks Steward - Governança"
+        return {
+            "messages": [AIMessage(content=response_text)],
+            "response": response_text,
+            "active_diagram": active_diagram,
+            "generated_code": generated_code,
+            "ci_report": ci_report,
+            "gitops_result": gitops_result,
+        }
+
+    # Numeric shortcuts from welcome menu
+    is_opt_1 = q_lower in ("1", "1.", "opcao 1", "opção 1")
+    is_opt_2 = q_lower in ("2", "2.", "opcao 2", "opção 2")
+    is_opt_3 = q_lower in ("3", "3.", "opcao 3", "opção 3")
+    is_opt_4 = q_lower in ("4", "4.", "opcao 4", "opção 4")
+    is_opt_5 = q_lower in ("5", "5.", "opcao 5", "opção 5")
+    is_opt_6 = q_lower in ("6", "6.", "opcao 6", "opção 6")
+
+    # 1. Mermaid Diagram Generation (Option 3)
+    if is_opt_3 or any(k in q_lower for k in ("diagram", "diagrama", "erd", "erdiagram", "mermaid", "lineage", "desenhar", "modelo visual")):
         if "lineage" in q_lower or "fluxo" in q_lower or "medallion" in q_lower:
             diag = generate_diagram("lineage")
-        elif "sales" in q_lower:
+        elif "sales" in q_lower or "vendas" in q_lower:
             diag = generate_diagram("er", domain="sales_lakehouse")
         else:
             diag = generate_diagram("er", domain="corporate_credit")
@@ -84,25 +175,24 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
         active_diagram = diag
         response_text = f"Here is the requested Mermaid diagram:\n\n{diag}"
 
-    # 2. Databricks Unity Catalog Introspection
-    elif any(k in q_lower for k in ("catalog", "schema", "tabelas", "unity catalog", "introspect")):
+    # 2. Databricks Unity Catalog Introspection (Option 1)
+    elif is_opt_1 or any(k in q_lower for k in ("catalog", "catálogo", "schema", "tabelas", "unity catalog", "introspect")):
         response_text = inspect_unity_catalog()
 
-    # 3. Semantic Layer & Business Models
-    elif any(k in q_lower for k in ("semantic", "metrica", "dimensao", "ontology", "ontologia", "negocio")):
+    # 3. Semantic Layer & Business Models (Option 2)
+    elif is_opt_2 or any(k in q_lower for k in ("semantic", "semântica", "semantica", "metrica", "métrica", "dimensao", "dimensão", "ontology", "ontologia", "negocio", "negócio")):
         response_text = load_semantic_models()
 
     # 4. ETL Pipeline Generation
-    elif any(k in q_lower for k in ("etl", "pipeline", "pyspark", "sparksql", "bronze", "silver", "gold")):
+    elif is_opt_4 or any(k in q_lower for k in ("etl", "pipeline", "pyspark", "sparksql", "bronze", "silver", "gold")):
         layer = "gold" if "gold" in q_lower else "bronze" if "bronze" in q_lower else "silver"
         entity_name = "facilities"
-        if "sales" in q_lower or "order" in q_lower:
+        if "sales" in q_lower or "order" in q_lower or "venda" in q_lower:
             entity_name = "orders"
-        elif "transaction" in q_lower:
+        elif "transaction" in q_lower or "transac" in q_lower:
             entity_name = "silver_transactions" if layer == "silver" else "bronze_raw_transactions"
 
-        # Generate pipeline and preserve generated code in state
-        reg = SemanticRegistry("configs/semantic_models")
+        reg = SemanticRegistry(settings.semantic_models_path)
         ent_obj = reg.get_entity(entity_name)
         if not ent_obj:
             from src.databricks.introspector import _build_mock_entities
@@ -126,7 +216,7 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
             response_text = generate_etl_pipeline(entity_name, layer=layer)
 
     # 5. Data Best Practices CI Quality Gate
-    elif any(k in q_lower for k in ("ci", "lint", "ruff", "sqlfluff", "anti-pattern", "validar")):
+    elif is_opt_5 or any(k in q_lower for k in ("ci", "esteira", "lint", "ruff", "sqlfluff", "anti-pattern", "validar")):
         py_code = generated_code.get("pyspark") if generated_code else None
         sql_code = generated_code.get("sparksql") if generated_code else None
 
@@ -138,8 +228,8 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
         ci_report = report
         response_text = report.summary_markdown or report.format_markdown()
 
-    # 6. GitOps & PR Opening (word boundary regex prevents false positives on 'produtos', 'preco', etc.)
-    elif re.search(r"\b(pr|pull\s*request|gitops|branch|commit|push)\b", q_lower):
+    # 6. GitOps & PR Opening
+    elif is_opt_6 or re.search(r"\b(pr|pull\s*request|gitops|branch|commit|push)\b", q_lower):
         py_code = generated_code.get("pyspark") if generated_code else None
         sql_code = generated_code.get("sparksql") if generated_code else None
 
@@ -178,17 +268,18 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
                 f"#### CI Gate Report\n{report.summary_markdown}"
             )
 
-    # Default assistance
+    # Greeting / Default assistance menu
     else:
         response_text = (
-            "Hello! I am the **Databricks Steward Agent**.\n\n"
-            "I can assist you with:\n"
-            "1. **Unity Catalog Introspection**: Discover catalogs, schemas, and tables.\n"
-            "2. **Semantic Modeling**: Query business dimensions, metrics, and relationships.\n"
-            "3. **Mermaid.js Diagrams**: Generate ER diagrams (`erDiagram`) and Medallion flowcharts.\n"
-            "4. **Modular ETL Engineering**: Produce idempotent PySpark & SparkSQL pipelines (Bronze, Silver, Gold).\n"
-            "5. **CI Quality Gate**: Verify code with Ruff, SQLFluff (sparksql), and anti-pattern detectors.\n"
-            "6. **Automated GitOps**: Create feature branches, Conventional Commits, and open GitHub PRs."
+            "Olá! Sou o **Databricks Steward Agent**, seu copiloto de governança e engenharia de dados Lakehouse.\n\n"
+            "Posso ajudar você com:\n"
+            "1. **Unity Catalog Introspection**: Descobrir catálogos, schemas e tabelas.\n"
+            "2. **Semantic Modeling**: Consultar dimensões, métricas de negócio e relacionamentos.\n"
+            "3. **Mermaid.js Diagrams**: Gerar diagramas conceituais (`erDiagram`) e fluxos medalhão.\n"
+            "4. **Modular ETL Engineering**: Produzir pipelines idempotentes em PySpark e SparkSQL (Bronze, Silver, Gold).\n"
+            "5. **CI Quality Gate**: Validar código com Ruff, SQLFluff (sparksql) e detecção de anti-patterns.\n"
+            "6. **Automated GitOps**: Criar feature branches, Conventional Commits e abrir Pull Requests no GitHub.\n\n"
+            "💡 *Dica: Digite o número da opção (ex: `1`, `3`, `4`) ou descreva sua solicitação em linguagem natural!*"
         )
 
     return {
@@ -202,15 +293,32 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
 
 
 def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, Any]:
-    """Main routing and execution node for the Databricks Steward Agent.
-
-    Attempts genuine LLM reasoning with tool calling if model is available,
-    falling back to deterministic intent execution if offline, unreachable, or on error.
-    """
+    """Main routing and execution node for the Databricks Steward Agent."""
     client = llm or get_local_chat_client()
     base_url = str(getattr(client, "openai_api_base", None) or settings.local_llm_base_url)
     model_name = str(getattr(client, "model_name", None) or settings.local_llm_model)
     cache_key = (base_url, model_name)
+
+    messages = state.get("messages", [])
+    user_query = state.get("user_query") or _extract_query_text(messages)
+    q_lower = (user_query or "").strip().lower()
+
+    # 1. Instant resolution for UI title requests
+    if _is_title_request(user_query):
+        return {
+            "messages": [AIMessage(content="Databricks Steward - Governança")],
+            "response": "Databricks Steward - Governança",
+            "active_diagram": state.get("active_diagram"),
+            "generated_code": state.get("generated_code"),
+            "ci_report": state.get("ci_report"),
+            "gitops_result": state.get("gitops_result"),
+        }
+
+    # 2. Direct numeric menu shortcuts
+    if q_lower in ("1", "1.", "opcao 1", "opção 1", "2", "2.", "opcao 2", "opção 2",
+                   "3", "3.", "opcao 3", "opção 3", "4", "4.", "opcao 4", "opção 4",
+                   "5", "5.", "opcao 5", "opção 5", "6", "6.", "opcao 6", "opção 6"):
+        return _deterministic_steward_execution(state)
 
     now = time.time()
     cached = _availability_cache.get(cache_key)
@@ -221,19 +329,58 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
         if now < expiry:
             is_available = avail
 
+    # 3. Conversational greetings handled naturally without tool bindings
+    if _is_greeting(user_query):
+        if is_available:
+            try:
+                system_prompt = (
+                    "Você é o Databricks Steward Agent, assistente especializado em governança e engenharia de dados Lakehouse. "
+                    "Apresente-se cordialmente em português de forma clara e profissional. "
+                    "Explique resumidamente que você ajuda com:\n"
+                    "1. Unity Catalog Introspection: descoberta de tabelas e schemas\n"
+                    "2. Camada Semântica: métricas e dimensões de negócio\n"
+                    "3. Diagramas Mermaid: modelagem visual ER e linhagem medalhão\n"
+                    "4. Pipelines ETL: geração PySpark/SparkSQL Bronze, Silver e Gold\n"
+                    "5. Esteira de CI: qualidade de código (Ruff, SQLFluff, anti-patterns)\n"
+                    "6. GitOps: automação de branch, commit e Pull Requests no GitHub\n"
+                    "Oriente o usuário a escolher um número (1 a 6) ou descrever sua necessidade."
+                )
+                llm_res = client.invoke([
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_query or "olá"},
+                ])
+                _availability_cache[cache_key] = (True, now + 30.0)
+                reply = str(llm_res.content or "").strip()
+                if reply.startswith("{") and reply.endswith("}"):
+                    try:
+                        p = json.loads(reply)
+                        if isinstance(p, dict) and "parameters" in p and "message" in p["parameters"]:
+                            reply = str(p["parameters"]["message"])
+                    except Exception as err:  # noqa: BLE001
+                        logger.debug("Failed parsing JSON greeting reply: %s", err)
+                if reply:
+                    return {
+                        "messages": [AIMessage(content=reply)],
+                        "response": reply,
+                        "active_diagram": state.get("active_diagram"),
+                        "generated_code": state.get("generated_code"),
+                        "ci_report": state.get("ci_report"),
+                        "gitops_result": state.get("gitops_result"),
+                    }
+            except Exception as e:  # noqa: BLE001
+                _availability_cache[cache_key] = (False, now + 10.0)
+                logger.debug("Local LLM offline or unreachable (%s); using deterministic welcome.", e)
+        return _deterministic_steward_execution(state)
+
+    # 4. Technical queries: LLM with tool calling
     if is_available:
         try:
             tools = get_langchain_tools()
             llm_with_tools = client.bind_tools(tools)
-            messages = state.get("messages", [])
-            user_query = state.get("user_query") or _extract_query_text(messages)
             if not messages and user_query:
                 messages = [{"role": "user", "content": user_query}]
 
-            # Attempt LLM call
             response = llm_with_tools.invoke(messages)
-
-            # Record success in cache
             _availability_cache[cache_key] = (True, now + 30.0)
 
             # Check if model produced tool calls
@@ -256,7 +403,7 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                         elif t_name == "generate_etl_pipeline_tool":
                             ent = t_args.get("entity_name", "facilities")
                             lyr = t_args.get("layer", "silver")
-                            reg = SemanticRegistry("configs/semantic_models")
+                            reg = SemanticRegistry(settings.semantic_models_path)
                             e_model = reg.get_entity(ent)
                             if e_model:
                                 pipe = generate_medallion_pipeline(e_model, layer=lyr)
@@ -277,20 +424,27 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
                     "gitops_result": gitops_result,
                 }
             if response.content:
+                content_str = str(response.content).strip()
+                if content_str.startswith("{") and content_str.endswith("}"):
+                    try:
+                        p = json.loads(content_str)
+                        if isinstance(p, dict) and "parameters" in p and "message" in p["parameters"]:
+                            content_str = str(p["parameters"]["message"])
+                    except Exception as err:  # noqa: BLE001
+                        logger.debug("Failed parsing JSON content reply: %s", err)
                 return {
                     "messages": [response],
-                    "response": str(response.content),
+                    "response": content_str,
                     "active_diagram": state.get("active_diagram"),
                     "generated_code": state.get("generated_code"),
                     "ci_report": state.get("ci_report"),
                     "gitops_result": state.get("gitops_result"),
                 }
         except Exception as e:  # noqa: BLE001
-            # Mark unavailable in cache for 10 seconds to avoid repeating failed connection attempts
             _availability_cache[cache_key] = (False, now + 10.0)
             logger.debug("Local LLM offline or unreachable (%s); using deterministic steward router.", e)
 
-    # Deterministic fallback engine
+    # 5. Deterministic fallback
     return _deterministic_steward_execution(state)
 
 

@@ -127,13 +127,16 @@ def chat_completions(request: ChatCompletionRequest) -> Any:
         )
         graph = create_steward_graph(llm=llm)
 
-        # Get last user prompt
+        # Get last user prompt, or fallback to last message
         prompt = ""
         for m in reversed(request.messages):
             if m.role == "user":
                 prompt = _extract_text(m.content)
                 if prompt.strip():
                     break
+
+        if not prompt and request.messages:
+            prompt = _extract_text(request.messages[-1].content)
 
         if not prompt:
             prompt = "Olá! Como posso ajudar na governança ou engenharia de dados do Databricks?"

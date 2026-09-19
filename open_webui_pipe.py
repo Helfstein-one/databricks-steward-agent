@@ -68,6 +68,8 @@ class Pipe:
 
     def __init__(self) -> None:
         self.valves = self.Valves()
+        self._synced_base_url = self.valves.LOCAL_LLM_BASE_URL
+        self._synced_model = self.valves.LOCAL_LLM_MODEL
         self.llm = get_local_chat_client(
             base_url=self.valves.LOCAL_LLM_BASE_URL,
             model=self.valves.LOCAL_LLM_MODEL,
@@ -78,9 +80,9 @@ class Pipe:
 
     def _sync_llm_with_valves(self) -> None:
         """Sync ChatOpenAI client with active administrative valves if overridden."""
-        current_base = str(getattr(self.llm, "openai_api_base", ""))
-        current_model = str(getattr(self.llm, "model_name", ""))
-        if current_base != self.valves.LOCAL_LLM_BASE_URL or current_model != self.valves.LOCAL_LLM_MODEL:
+        if self._synced_base_url != self.valves.LOCAL_LLM_BASE_URL or self._synced_model != self.valves.LOCAL_LLM_MODEL:
+            self._synced_base_url = self.valves.LOCAL_LLM_BASE_URL
+            self._synced_model = self.valves.LOCAL_LLM_MODEL
             self.llm = get_local_chat_client(
                 base_url=self.valves.LOCAL_LLM_BASE_URL,
                 model=self.valves.LOCAL_LLM_MODEL,

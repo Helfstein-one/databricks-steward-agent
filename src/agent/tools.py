@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from src.ci.runner import run_ci_pipeline
+from src.config import settings
 from src.databricks.introspector import introspect_catalog
 from src.etl.generator import generate_medallion_pipeline
 from src.gitops.github_pr import create_data_product_pr
@@ -24,9 +25,10 @@ def inspect_unity_catalog(catalog: str = "main", schema: str = "default") -> str
     return "\n".join(lines)
 
 
-def load_semantic_models(path: str = "configs/semantic_models") -> str:
+def load_semantic_models(path: str | Path | None = None) -> str:
     """Load and format semantic domain ontologies from YAML files."""
-    reg = SemanticRegistry(Path(path))
+    models_path = Path(path) if path else settings.semantic_models_path
+    reg = SemanticRegistry(models_path)
     return reg.get_prompt_context()
 
 
@@ -36,8 +38,12 @@ def query_semantic_layer(
     group_by_dims: list[str] | str,
 ) -> str:
     """Compile business metrics and dimensions into an optimized SparkSQL query."""
-    reg = SemanticRegistry("configs/semantic_models")
+    reg = SemanticRegistry(settings.semantic_models_path)
     compiler = SemanticQueryCompiler(reg)
+
+    if not entity_name:
+        available = list(reg.entities.keys())
+        entity_name = available[0] if available else "facilities"
 
     if isinstance(metric_names, str):
         metric_names = [m.strip() for m in metric_names.split(",") if m.strip()]
@@ -57,7 +63,7 @@ def query_semantic_layer(
 
 def generate_diagram(diagram_type: str = "er", domain: str | None = None) -> str:
     """Generate Mermaid erDiagram (Crow's foot) or Medallion lineage flowchart."""
-    reg = SemanticRegistry("configs/semantic_models")
+    reg = SemanticRegistry(settings.semantic_models_path)
 
     # If domain specified, retrieve domain entities
     if domain:
@@ -83,7 +89,7 @@ def generate_diagram(diagram_type: str = "er", domain: str | None = None) -> str
 
 def generate_etl_pipeline(entity_name: str, layer: str = "silver") -> str:
     """Generate Medallion PySpark and SparkSQL pipelines for a given entity."""
-    reg = SemanticRegistry("configs/semantic_models")
+    reg = SemanticRegistry(settings.semantic_models_path)
     entity = reg.get_entity(entity_name)
 
     if not entity:

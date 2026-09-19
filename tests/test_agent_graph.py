@@ -161,3 +161,52 @@ def test_open_webui_pipe_execution_streaming():
     assert len(chunks) > 0
     full_text = "".join(chunks)
     assert "Discovered" in full_text
+
+
+def test_steward_node_numeric_menu_shortcuts():
+    """Verify numeric menu options 1 to 6 route to expected capabilities."""
+    # Option 1: Unity Catalog
+    out1 = steward_node({"messages": [{"role": "user", "content": "1"}], "user_query": "1"})
+    assert "Discovered" in out1["response"]
+
+    # Option 2: Semantic Models
+    out2 = steward_node({"messages": [{"role": "user", "content": "2"}], "user_query": "2"})
+    assert "Domain" in out2["response"]
+
+    # Option 3: Mermaid Diagram
+    out3 = steward_node({"messages": [{"role": "user", "content": "3"}], "user_query": "3"})
+    assert "```mermaid" in out3["response"]
+
+    # Option 4: ETL Pipeline
+    out4 = steward_node({"messages": [{"role": "user", "content": "4"}], "user_query": "4"})
+    assert "PySpark Pipeline" in out4["response"]
+
+    # Option 5: CI Quality Gate
+    out5 = steward_node({"messages": [{"role": "user", "content": "5"}], "user_query": "5"})
+    assert "CI Quality Gate Report" in out5["response"]
+
+    # Option 6: GitOps PR
+    out6 = steward_node({"messages": [{"role": "user", "content": "6"}], "user_query": "6"})
+    assert "PR" in out6["response"]
+
+
+def test_steward_node_title_request():
+    """Verify background UI title generation requests return concise titles without loops."""
+    title_prompts = [
+        "Generate a brief 3-5 word title for this chat based on the conversation:",
+        "Summarize the conversation in 3-5 words for a chat title",
+        "Generate a title for this chat",
+    ]
+    for prompt in title_prompts:
+        out = steward_node({"messages": [{"role": "user", "content": prompt}], "user_query": prompt})
+        assert "Databricks Steward - Governança" in out["response"]
+        assert "Hello!" not in out["response"]
+
+
+def test_steward_node_portuguese_greetings():
+    """Verify conversational Portuguese greetings return the friendly stewardship welcome menu."""
+    for greet in ["olá", "oi", "bom dia", "boa tarde"]:
+        out = steward_node({"messages": [{"role": "user", "content": greet}], "user_query": greet})
+        assert "Databricks Steward Agent" in out["response"]
+        assert "Unity Catalog Introspection" in out["response"]
+        assert "Dica:" in out["response"]
