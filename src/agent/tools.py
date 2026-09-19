@@ -67,13 +67,17 @@ ENTITY_ALIAS_MAP: dict[str, str] = {
     "provisoes": "impairments",
     "provisões": "impairments",
     "perdas": "impairments",
-    # Lakehouse sample tables
+    # Lakehouse sample and workspace tables
     "silver_transactions": "silver_transactions",
     "bronze_raw_transactions": "bronze_raw_transactions",
     "gold_risk_metrics": "gold_risk_metrics",
     "transactions": "silver_transactions",
     "transações": "silver_transactions",
     "transacoes": "silver_transactions",
+    "medallion_bronze_transactions": "medallion_bronze_transactions",
+    "medallion_silver_transactions": "medallion_silver_transactions",
+    "medallion_gold_sales_kpis": "medallion_gold_sales_kpis",
+    "medallion_gold_customer_kpis": "medallion_gold_customer_kpis",
 }
 
 DOMAIN_ALIAS_MAP: dict[str, str] = {
@@ -103,8 +107,10 @@ def inspect_unity_catalog(catalog: str = "main", schema: str = "default") -> str
     )
 
     entities = introspect_catalog(catalog=catalog, schema=schema, client=client)
+    actual_cat = entities[0].catalog if entities else catalog
+    actual_sch = entities[0].schema_name if entities else schema
     lines = [
-        f"Discovered {len(entities)} entities in {catalog}.{schema} (*{mode_str}*):",
+        f"Discovered {len(entities)} entities in {actual_cat}.{actual_sch} (*{mode_str}*):",
     ]
     for ent in entities:
         col_summary = ", ".join([f"`{c.name}` ({c.type})" for c in ent.columns[:6]])
@@ -192,17 +198,18 @@ def format_entity_modeling(entity_name: str) -> str:
             entity = reg.get_entity(target_name + "s")
 
     if not entity:
-        from src.databricks.introspector import _build_mock_entities
+        from src.databricks.introspector import introspect_catalog
 
-        mock_ents = {e.name.lower(): e for e in _build_mock_entities()}
-        e_obj = mock_ents.get(target_name.lower())
+        real_ents = {e.name.lower(): e for e in introspect_catalog()}
+        e_obj = real_ents.get(target_name.lower())
         if e_obj:
-            cols = "\n".join([f"| `{c.name}` | `{c.type.upper()}` | {c.comment or 'Coluna de dados'} |" for c in e_obj.columns])
+            cols = "\n".join([f"| `{c.name}` | `{c.type.upper()}` | {c.description or 'Coluna de dados'} |" for c in e_obj.columns])
             return (
-                f"### 📐 Modelagem de Dados: `{e_obj.name}`\n\n"
-                f"- **Tabela Lakehouse:** `{e_obj.catalog}.{e_obj.schema_name}.{e_obj.name}`\n"
-                f"- **Camada Medalhão:** `{e_obj.layer or 'unassigned'}`\n\n"
-                f"#### 📋 Colunas:\n"
+                f"### 📐 Modelagem da Tabela Lakehouse: `{e_obj.name}`\n\n"
+                f"- **Tabela Física:** `{e_obj.catalog}.{e_obj.schema_name}.{e_obj.name}`\n"
+                f"- **Camada Medalhão:** `{e_obj.layer or 'unassigned'}`\n"
+                f"- **Chave Primária:** `{e_obj.primary_key or 'Não definida explicitamente'}`\n\n"
+                f"#### 📋 Colunas Físicas do Unity Catalog:\n"
                 f"| Coluna | Tipo | Descrição |\n"
                 f"|---|---|---|\n"
                 f"{cols}\n\n"

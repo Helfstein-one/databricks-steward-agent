@@ -176,12 +176,35 @@ def introspect_catalog(
 
     try:
         assert client.client is not None
-        tables_iter = client.client.tables.list(catalog_name=catalog, schema_name=schema)
+        effective_catalog = catalog
+        effective_schema = schema
+
+        # Check if requested catalog exists; if not, discover available user catalogs
+        try:
+            list(client.client.schemas.list(catalog_name=effective_catalog))
+        except Exception:  # noqa: BLE001
+            available_cats = [c.name for c in client.client.catalogs.list() if c.name != "system"]
+            if available_cats:
+                effective_catalog = "workspace" if "workspace" in available_cats else available_cats[0]
+                logger.info(
+                    "Catalog '%s' not found. Auto-selected available catalog '%s'.",
+                    catalog,
+                    effective_catalog,
+                )
+                available_schemas = [
+                    s.name
+                    for s in client.client.schemas.list(catalog_name=effective_catalog)
+                    if s.name != "information_schema"
+                ]
+                if available_schemas:
+                    effective_schema = "default" if "default" in available_schemas else available_schemas[0]
+
+        tables_iter = client.client.tables.list(catalog_name=effective_catalog, schema_name=effective_schema)
         entities: list[EntityModel] = []
 
         for table in tables_iter:
             table_name = getattr(table, "name", "")
-            full_table_name = f"{catalog}.{schema}.{table_name}"
+            full_table_name = f"{effective_catalog}.{effective_schema}.{table_name}"
             raw_columns = getattr(table, "columns", []) or []
 
             cols: list[ColumnModel] = []
@@ -189,16 +212,46 @@ def introspect_catalog(
 
             for col in raw_columns:
                 col_name = getattr(col, "name", "")
-                type_name = str(getattr(col, "type_name", "string")).lower()
+                type_name = (
+                    str(getattr(col, "type_name", "string"))
+                    .lower()
+                    .replace("columntypename.", "")
+                )
                 nullable = bool(getattr(col, "nullable", True))
                 cols.append(ColumnModel(name=col_name, type=type_name, nullable=nullable))
                 dims.append(DimensionModel(name=col_name, type=type_name, column=col_name))
 
+            # Infer medallion layer from table name naming convention
+            inferred_layer = None
+            tl = table_name.lower()
+            if "bronze" in tl or "raw" in tl:
+                inferred_layer = "bronze"
+            elif "silver" in tl or "clean" in tl or "curated" in tl:
+                inferred_layer = "silver"
+            elif "gold" in tl or "kpi" in tl or "metric" in tl or "dim_" in tl or "fact_" in tl:
+                inferred_layer = "gold"
+
+            # Infer primary key from column names if present
+            pk_col = None
+            for c in cols:
+                if c.name.lower() in (
+                    f"{table_name.lower()}_id",
+                    "id",
+                    "transaction_id",
+                    "customer_id",
+                    "facility_id",
+                    "order_id",
+                ):
+                    pk_col = c.name
+                    break
+
             entity = EntityModel(
                 name=table_name,
                 table_name=full_table_name,
-                catalog=catalog,
-                schema_name=schema,
+                catalog=effective_catalog,
+                schema_name=effective_schema,
+                primary_key=pk_col,
+                layer=inferred_layer,
                 columns=cols,
                 dimensions=dims,
                 description=getattr(table, "comment", None),
@@ -206,8 +259,8 @@ def introspect_catalog(
             entities.append(entity)
 
         if not entities:
-            logger.warning(f"No tables discovered in {catalog}.{schema}. Using mock entities.")
-            return _build_mock_entities(catalog=catalog, schema=schema)
+            logger.warning(f"No tables discovered in {effective_catalog}.{effective_schema}. Using mock entities.")
+            return _build_mock_entities(catalog=effective_catalog, schema=effective_schema)
 
         return entities
 

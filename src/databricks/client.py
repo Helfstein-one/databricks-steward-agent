@@ -34,9 +34,10 @@ class DatabricksCEClient:
         warehouse_id: str | None = None,
         timeout: int = 60,
     ):
-        self.host = (host or settings.databricks_host).rstrip("/")
-        self.token = token or settings.databricks_token
-        self.warehouse_id = warehouse_id or settings.databricks_warehouse_id
+        raw_host = host if host is not None else (settings.databricks_host or "")
+        self.host = raw_host.split("?")[0].rstrip("/")
+        self.token = token if token is not None else settings.databricks_token
+        self.warehouse_id = warehouse_id if warehouse_id is not None else settings.databricks_warehouse_id
         self.timeout = timeout
         self.client: WorkspaceClient | None = None
         self._init_error: str | None = None
