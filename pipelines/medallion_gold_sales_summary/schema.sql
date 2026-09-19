@@ -1,0 +1,1 @@
+CREATE OR REPLACE TABLE workspace.default.medallion_gold_sales_summary AS SELECT date, category, SUM(amount) AS total_revenue, COUNT(*) AS total_orders FROM workspace.default.medallion_silver_transactions GROUP BY date, category;
