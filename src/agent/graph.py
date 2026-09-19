@@ -369,8 +369,8 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
     is_opt_5 = q_lower in ("5", "5.", "opcao 5", "opção 5")
     is_opt_6 = q_lower in ("6", "6.", "opcao 6", "opção 6")
 
-    # 1. Mermaid Diagram Generation (Option 3)
-    if is_opt_3 or any(k in q_lower for k in ("diagram", "diagrama", "erd", "erdiagram", "mermaid", "lineage", "desenhar", "modelo visual")):
+    # 1. Mermaid Diagram & Relationships (Option 3)
+    if is_opt_3 or any(k in q_lower for k in ("diagram", "diagrama", "erd", "erdiagram", "mermaid", "lineage", "desenhar", "modelo visual", "relações", "relacoes", "relacionamento", "relacionamentos", "como estão relacionadas")):
         ent = _extract_entity_from_query(user_query)
         if "lineage" in q_lower or "fluxo" in q_lower or "medallion" in q_lower:
             diag = generate_diagram("lineage")
@@ -382,7 +382,7 @@ def _deterministic_steward_execution(state: AgentState) -> dict[str, Any]:
             diag = generate_diagram("er", domain="corporate_credit")
 
         active_diagram = diag
-        response_text = f"Here is the requested Mermaid diagram:\n\n{diag}"
+        response_text = diag
 
     # 2. Databricks Unity Catalog Introspection (Option 1)
     elif is_opt_1 or any(k in q_lower for k in ("catalog", "catálogo", "schema", "tabelas", "unity catalog", "introspect")):

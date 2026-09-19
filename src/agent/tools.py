@@ -93,11 +93,27 @@ DOMAIN_ALIAS_MAP: dict[str, str] = {
 
 def inspect_unity_catalog(catalog: str = "main", schema: str = "default") -> str:
     """Introspect Databricks Unity Catalog tables, columns, and constraints."""
-    entities = introspect_catalog(catalog=catalog, schema=schema)
-    lines = [f"Discovered {len(entities)} entities in {catalog}.{schema}:"]
+    from src.databricks.client import DatabricksCEClient
+
+    client = DatabricksCEClient()
+    mode_str = (
+        "🟢 Conectado ao Databricks Real via SDK"
+        if client.is_configured()
+        else "🟡 Modo Demonstração Offline (defina DATABRICKS_HOST e DATABRICKS_TOKEN no .env para conectar ao seu workspace)"
+    )
+
+    entities = introspect_catalog(catalog=catalog, schema=schema, client=client)
+    lines = [
+        f"Discovered {len(entities)} entities in {catalog}.{schema} (*{mode_str}*):",
+    ]
     for ent in entities:
-        col_summary = ", ".join([f"{c.name} ({c.type})" for c in ent.columns[:6]])
-        lines.append(f"- **{ent.name}** (layer: {ent.layer or 'unassigned'}): {col_summary}")
+        col_summary = ", ".join([f"`{c.name}` ({c.type})" for c in ent.columns[:6]])
+        lines.append(f"- **`{ent.name}`** (Camada: `{ent.layer or 'unassigned'}`): {col_summary}")
+
+    lines.append(
+        "\n💡 *Nota: Estas são as tabelas físicas inspecionadas no Unity Catalog. "
+        "Para ver os modelos de dados e Data Products da Camada Semântica (ex: `customers`, `facilities`), digite `2` ou peça a modelagem da tabela.*"
+    )
     return "\n".join(lines)
 
 
@@ -275,6 +291,7 @@ def generate_diagram(diagram_type: str = "er", domain: str | None = None) -> str
 
     entities = []
     relationships = []
+    domain_title = "Camada Semântica Lakehouse"
 
     # If domain specified, resolve domain alias or entity focus
     if domain:
@@ -284,6 +301,7 @@ def generate_diagram(diagram_type: str = "er", domain: str | None = None) -> str
         if dom:
             entities = dom.entities
             relationships = dom.relationships
+            domain_title = f"Domínio Semântico: `{resolved_domain}`"
         else:
             target_ent = ENTITY_ALIAS_MAP.get(clean_dom, clean_dom)
             ent = reg.get_entity(target_ent)
@@ -297,6 +315,7 @@ def generate_diagram(diagram_type: str = "er", domain: str | None = None) -> str
                 relationships = [r for r in all_rels if r.from_entity == ent.name or r.to_entity == ent.name]
                 related_names = set([ent.name] + [r.from_entity for r in relationships] + [r.to_entity for r in relationships])
                 entities = [reg.get_entity(n) for n in related_names if reg.get_entity(n)]
+                domain_title = f"Entidade: `{ent.name}` ({d_name or 'Lakehouse'})"
 
     if not entities:
         entities = reg.list_entities()
@@ -310,10 +329,42 @@ def generate_diagram(diagram_type: str = "er", domain: str | None = None) -> str
 
     if is_lineage:
         mermaid_code = generate_lineage_diagram(entities)
-    else:
-        mermaid_code = generate_er_diagram(entities, relationships)
+        return (
+            f"### 🌊 Fluxo de Linhagem Medalhão (Bronze → Silver → Gold)\n\n"
+            f"```mermaid\n{mermaid_code}\n```"
+        )
 
-    return f"```mermaid\n{mermaid_code}\n```"
+    # Format relationships table for ER diagrams
+    rel_rows = []
+    cardinality_pt = {
+        "many_to_one": "N:1 (Muitos para Um)",
+        "one_to_many": "1:N (Um para Muitos)",
+        "one_to_one": "1:1 (Um para Um)",
+        "many_to_many": "N:M (Muitos para Muitos)",
+    }
+    for r in relationships:
+        c_label = cardinality_pt.get(r.type.lower(), r.type)
+        rel_rows.append(
+            f"| `{r.from_entity}` | `{r.from_column}` | {c_label} | `{r.to_entity}` | `{r.to_column}` |"
+        )
+
+    table_section = ""
+    if rel_rows:
+        table_section = (
+            "#### 🔗 Relações e Chaves Estrangeiras (Camada Semântica):\n"
+            "| Tabela Origem | Chave Origem (FK) | Relacionamento | Tabela Destino | Chave Destino (PK) |\n"
+            "|---|---|---|---|---|\n"
+            + "\n".join(rel_rows)
+            + "\n\n"
+        )
+
+    mermaid_code = generate_er_diagram(entities, relationships)
+    return (
+        f"### 📊 Modelo de Entidade-Relacionamento ({domain_title})\n\n"
+        f"{table_section}"
+        f"#### 📐 Diagrama Visual Mermaid (ERD):\n"
+        f"```mermaid\n{mermaid_code}\n```"
+    )
 
 
 def generate_etl_pipeline(entity_name: str, layer: str = "silver") -> str:
