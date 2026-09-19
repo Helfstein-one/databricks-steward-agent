@@ -227,9 +227,8 @@ def _is_data_preview_query(query: str) -> bool:
     """Check if query requests table data inspection, preview, or sample."""
     q = (query or "").strip().lower()
     patterns = [
-        r"\b(consultar\s+dados|amostra\s+de\s+dados|amostra\s+da\s+tabela|preview\s+da\s+tabela|preview\s+de\s+dados)\b",
-        r"\b(mostrar\s+dados|ver\s+dados|trazer\s+dados|exibir\s+dados|ler\s+dados)\b",
-        r"\b(mostrar\s+tabela|ver\s+tabela|preview\s+tabela|amostra\s+tabela)\b",
+        r"\b(consultar|consulte|quero ver|ver|mostrar|mostre|trazer|traga|exibir|exiba|ler|leia)\s+(os\s+)?(dados|registros|linhas)\b",
+        r"\b(amostra|preview)\s+(de\s+|dos\s+|da\s+)?(dados|tabela)\b",
         r"^select\s+.*\s+from\s+",
     ]
     return any(re.search(p, q) for p in patterns)
