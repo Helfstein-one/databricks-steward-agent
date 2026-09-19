@@ -11,3 +11,4 @@ build/
 .agents/
 pipelines/
 pipeline.py
+venv/
