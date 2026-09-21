@@ -4,6 +4,230 @@ from typing import Any
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
+PORTUGUESE_STOP_WORDS: set[str] = {
+    "de",
+    "da",
+    "do",
+    "das",
+    "dos",
+    "a",
+    "o",
+    "as",
+    "os",
+    "um",
+    "uma",
+    "uns",
+    "umas",
+    "em",
+    "na",
+    "no",
+    "nas",
+    "nos",
+    "para",
+    "por",
+    "com",
+    "e",
+    "ou",
+    "se",
+    "que",
+    "como",
+    "dessa",
+    "desse",
+    "dessas",
+    "desses",
+    "desta",
+    "deste",
+    "destas",
+    "destos",
+    "dela",
+    "dele",
+    "delas",
+    "deles",
+    "disso",
+    "disto",
+    "esta",
+    "este",
+    "essa",
+    "esse",
+    "estas",
+    "estes",
+    "essas",
+    "esses",
+    "mes",
+    "mês",
+    "passado",
+    "passada",
+    "me",
+    "gera",
+    "gerar",
+    "propor",
+    "puxe",
+    "puxa",
+    "sobre",
+    "qual",
+    "quais",
+    "partir",
+    "acima",
+    "anterior",
+    "mesma",
+    "mesmo",
+    "aqui",
+    "ali",
+    "crie",
+    "cria",
+    "criar",
+    "criacao",
+    "criação",
+}
+
+ENGLISH_STOP_WORDS: set[str] = {
+    "the",
+    "a",
+    "an",
+    "for",
+    "of",
+    "in",
+    "on",
+    "at",
+    "to",
+    "from",
+    "with",
+    "by",
+    "show",
+    "get",
+    "pull",
+    "display",
+    "view",
+    "fetch",
+    "select",
+    "me",
+    "please",
+    "want",
+    "would",
+    "like",
+    "create",
+    "generate",
+    "propose",
+    "draw",
+    "above",
+    "same",
+    "this",
+    "that",
+}
+
+ALL_STOP_WORDS: set[str] = PORTUGUESE_STOP_WORDS | ENGLISH_STOP_WORDS
+
+FILLER_KEYWORDS: set[str] = {
+    "tabela",
+    "table",
+    "tables",
+    "entidade",
+    "entity",
+    "entities",
+    "dados",
+    "data",
+    "schema",
+    "schemas",
+    "modelagem",
+    "modeling",
+    "model",
+    "models",
+    "diagrama",
+    "diagram",
+    "mermaid",
+    "pipeline",
+    "pipelines",
+    "etl",
+    "bronze",
+    "silver",
+    "gold",
+    "sobre",
+    "para",
+    "quero",
+    "ver",
+    "mostre",
+    "mostrar",
+    "consultar",
+    "consulte",
+    "exibir",
+    "exiba",
+    "trazer",
+    "traga",
+    "ler",
+    "leia",
+    "amostra",
+    "sample",
+    "preview",
+    "registros",
+    "records",
+    "linhas",
+    "rows",
+    "select",
+    "from",
+    "limit",
+    "structure",
+    "estrutura",
+    "colunas",
+    "columns",
+    "campos",
+    "fields",
+    "desenhar",
+    "desenha",
+    "desenho",
+    "draw",
+    "drawing",
+}
+
+ENTITY_SYNONYMS: dict[str, str] = {
+    # Customers / Clientes
+    "clientes": "customers",
+    "cliente": "customers",
+    "compradores": "customers",
+    "buyers": "customers",
+    "customer": "customers",
+    "customers": "customers",
+    # Transactions / Transações
+    "transações": "transactions",
+    "transacoes": "transactions",
+    "transação": "transactions",
+    "transacao": "transactions",
+    "transactions": "transactions",
+    "transaction": "transactions",
+    # Orders / Pedidos
+    "pedidos": "orders",
+    "pedido": "orders",
+    "sales_orders": "orders",
+    "order": "orders",
+    "orders": "orders",
+    # Products / Produtos
+    "produtos": "products",
+    "produto": "products",
+    "product": "products",
+    "products": "products",
+    # Facilities / Credit
+    "linha de credito": "facilities",
+    "linhas de credito": "facilities",
+    "linha de crédito": "facilities",
+    "linhas de crédito": "facilities",
+    "facilities": "facilities",
+    "facility": "facilities",
+    # Medallion layer aliases
+    "silver": "medallion_silver_transactions",
+    "bronze": "medallion_bronze_transactions",
+    "transacoes_silver": "medallion_silver_transactions",
+    "transações_silver": "medallion_silver_transactions",
+    "transacoes_bronze": "medallion_bronze_transactions",
+    "transações_bronze": "medallion_bronze_transactions",
+}
+
+
+def resolve_entity_synonym(entity: str) -> str:
+    """Resolve an entity name or alias to its canonical synonym."""
+    if not entity:
+        return ""
+    clean = entity.strip().lower()
+    return ENTITY_SYNONYMS.get(clean, entity)
+
 
 def _extract_query_text(messages: list[Any]) -> str:
     if not messages:
@@ -91,16 +315,87 @@ Output exactly one tag:""",
         return "OTHER"
 
 
-def _extract_table_or_entity(query: str) -> str:
+def _extract_table_or_entity(query: str, resolve_synonyms: bool = False) -> str:
+    """Extract table or entity name from query, skipping stop-words and filler words."""
     q = (query or "").strip().lower()
-    match = re.search(r"\b(?:tabela|dados de|dados da|de|da|tabela de)\s+([a-zA-Z0-9_.]+)\b", q)
-    if match:
-        return match.group(1)
-    words = q.split()
-    for i, w in enumerate(words):
-        if w in ("select", "from") and i + 1 < len(words):
-            return words[i + 1]
+    if not q:
+        return ""
+
+    # Check fully qualified table paths first (e.g. workspace.default.customers or default.customers)
+    match_full = re.search(r"\b([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\b", q)
+    if match_full:
+        res = match_full.group(1)
+        return resolve_entity_synonym(res) if resolve_synonyms else res
+
+    match_two = re.search(r"\b([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\b", q)
+    if match_two:
+        res = match_two.group(1)
+        return resolve_entity_synonym(res) if resolve_synonyms else res
+
+    raw_tokens = [re.sub(r"[^\w.]", "", tok) for tok in q.split()]
+    tokens = [tok for tok in raw_tokens if tok]
+
+    # Check SQL select ... from clause
+    for i, tok in enumerate(tokens):
+        if tok in ("select", "from") and i + 1 < len(tokens):
+            candidate = tokens[i + 1]
+            if candidate not in ALL_STOP_WORDS and candidate not in FILLER_KEYWORDS:
+                return resolve_entity_synonym(candidate) if resolve_synonyms else candidate
+
+    # Look for marker words
+    markers = {
+        "tabela",
+        "table",
+        "dados",
+        "pipeline",
+        "amostra",
+        "preview",
+        "for",
+        "from",
+        "of",
+        "about",
+        "modelagem",
+        "schema",
+    }
+    for i, tok in enumerate(tokens):
+        if tok in markers:
+            for candidate in tokens[i + 1 :]:
+                if candidate not in ALL_STOP_WORDS and candidate not in FILLER_KEYWORDS:
+                    return resolve_entity_synonym(candidate) if resolve_synonyms else candidate
+
+    # Fallback token extraction
+    for tok in tokens:
+        if tok not in ALL_STOP_WORDS and tok not in FILLER_KEYWORDS and len(tok) > 1:
+            return resolve_entity_synonym(tok) if resolve_synonyms else tok
+
     return ""
+
+
+def _extract_entity_from_query(query: str) -> str | None:
+    """Extract canonical entity name from query using synonym dictionary and stop-word skipping."""
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+
+    candidate = _extract_table_or_entity(q, resolve_synonyms=False)
+    if candidate:
+        syn = resolve_entity_synonym(candidate)
+        if syn and syn != candidate:
+            return syn
+        if candidate in ENTITY_SYNONYMS:
+            return ENTITY_SYNONYMS[candidate]
+
+    # Check multi-word or layer aliases in ENTITY_SYNONYMS sorted by length descending
+    sorted_synonyms = sorted(ENTITY_SYNONYMS.keys(), key=len, reverse=True)
+    for alias in sorted_synonyms:
+        pattern = r"(?:\b|_)" + re.escape(alias) + r"(?:\b|_)"
+        if re.search(pattern, q):
+            return ENTITY_SYNONYMS[alias]
+
+    if candidate and candidate not in ALL_STOP_WORDS and candidate not in FILLER_KEYWORDS:
+        return candidate
+
+    return None
 
 
 def _resolve_anaphoric_entity(query: str, messages: list[Any], state: dict[str, Any]) -> str | None:
@@ -114,6 +409,9 @@ def _resolve_anaphoric_entity(query: str, messages: list[Any], state: dict[str, 
         "dele",
         "disso",
         "essa tabela",
+        "desta tabela",
+        "a partir dessa tabela",
+        "tabela acima",
     ]
     is_anaphoric = any(ref in q for ref in anaphoric_refs) or "tabela" in q
 
@@ -179,44 +477,6 @@ def _get_conceptual_explanation(query: str) -> str | None:
         return "### 📘 Conceito: Arquitetura Medallion\n..."
     if "gitops" in q or "ci/cd" in q or "ci cd" in q:
         return "### 📘 Conceito: GitOps e CI no Lakehouse\n..."
-    return None
-
-
-def _extract_entity_from_query(query: str) -> str | None:
-    q = (query or "").strip().lower()
-    patterns = [
-        r"\b(?:tabela|entidade|camada|sobre|para|da|de|das|dos)\s+([a-zA-Z0-9_]+)\b",
-        r"\b([a-zA-Z0-9_]+)\b",
-    ]
-    ignore_words = {
-        "tabela",
-        "entidade",
-        "dados",
-        "schema",
-        "modelagem",
-        "diagrama",
-        "mermaid",
-        "pipeline",
-        "etl",
-        "bronze",
-        "silver",
-        "gold",
-        "uma",
-        "um",
-        "as",
-        "os",
-        "de",
-        "da",
-        "para",
-        "sobre",
-        "qual",
-    }
-    for p in patterns:
-        matches = re.finditer(p, q)
-        for m in matches:
-            word = m.group(1)
-            if word not in ignore_words and len(word) > 2:
-                return word
     return None
 
 
