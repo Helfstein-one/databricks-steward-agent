@@ -375,6 +375,36 @@ entities:
     to_entity: medallion_gold_sales_summary
     to_column: category
     type: many_to_one
+- name: brasa
+  table: workspace.default.brasa
+  primary_key: id
+  layer: silver
+  description: Data Product brasa gerado e materializado no Databricks Unity Catalog.
+  synonyms:
+  - brasa
+  - brasa
+  dimensions:
+  - name: id
+    type: string
+    column: id
+    description: Coluna id do data product brasa
+  - name: total_amount
+    type: double
+    column: total_amount
+    description: Coluna total_amount do data product brasa
+  metrics:
+  - name: total_brasa_records
+    type: count
+    sql: COUNT(*)
+    description: Contagem total de registros em brasa
+  - name: total_total_amount
+    type: sum
+    sql: SUM(total_amount)
+    description: Soma agregada de total_amount
+  - name: avg_total_amount
+    type: avg
+    sql: AVG(total_amount)
+    description: Média de total_amount
 relationships:
 - from_entity: medallion_bronze_transactions
   to_entity: medallion_silver_transactions
