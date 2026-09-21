@@ -1,9 +1,21 @@
 from typing import Any
 
-from src.agent.tools import deploy_and_materialize_data_product
-from src.databricks.client import execute_query, preview_table_data
-from src.databricks.introspector import inspect_unity_catalog
+from src.agent.tools import deploy_and_materialize_data_product, inspect_unity_catalog
+from src.databricks.client import DatabricksCEClient
 from src.domain.ports.databricks_port import IDatabricksAdapter
+
+_client_instance = DatabricksCEClient()
+
+
+def execute_query(query: str) -> list[dict[str, Any]]:
+    res = _client_instance.execute_query(query)
+    raw_res = res.get("result")
+    return getattr(raw_res, "data_array", []) if raw_res else []
+
+
+def preview_table_data(table_name: str, limit: int = 10) -> str:
+    res = _client_instance.preview_table_data(table_name, limit)
+    return str(res.get("markdown_table", ""))
 
 
 class DatabricksAdapter(IDatabricksAdapter):

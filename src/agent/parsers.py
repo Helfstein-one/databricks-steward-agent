@@ -93,13 +93,51 @@ Output exactly one tag:""",
 
 def _extract_table_or_entity(query: str) -> str:
     q = (query or "").strip().lower()
-    match = re.search(r"\b(?:tabela|dados de|dados da|de|da|tabela de)\s+([a-zA-Z0-9_.]+)\b", q)
-    if match:
-        return match.group(1)
-    words = q.split()
+    stop_words = {"de", "da", "dos", "as", "um", "uma", "o", "a", "para", "sobre", "qual", "nos", "nas"}
+    synonyms = {
+        "clientes": "customers",
+        "cliente": "customers",
+        "transações": "transactions",
+        "transacoes": "transactions",
+        "pedidos": "orders",
+        "vendas": "sales",
+        "usuarios": "users",
+        "produtos": "products"
+    }
+    
+    words = re.findall(r'[\w.]+', q)
+    
+    # Check 'select from' first
     for i, w in enumerate(words):
-        if w in ("select", "from") and i + 1 < len(words):
-            return words[i + 1]
+        if w in ("select", "from"):
+            for next_w in words[i+1:]:
+                if next_w not in stop_words and next_w not in ("select", "from"):
+                    if next_w == "*":
+                        continue
+                    return synonyms.get(next_w, next_w)
+    
+    indicators = {"tabela", "dados", "de", "da", "dos", "sobre", "para"}
+    for i, w in enumerate(words):
+        if w in indicators:
+            for next_w in words[i+1:]:
+                if next_w not in stop_words and next_w not in indicators:
+                    return synonyms.get(next_w, next_w)
+                    
+    # Explicit mapping
+    for w in words:
+        if w in synonyms:
+            return synonyms[w]
+            
+    # Fallback: if we haven't found anything, return the last non-stop-word that is likely an entity
+    # (heuristically, nouns are often at the end or near the end of short queries)
+    # But to avoid false positives like "show" or "ver", we try to avoid common verbs.
+    verbs = {"quero", "ver", "mostrar", "mostre", "traga", "exiba", "leia", "ler", "consultar", "consulte", "exibir", "show", "me", "the", "table"}
+    generic_ignore = stop_words | indicators | verbs | {"select", "from", "uma", "um", "os", "as"}
+    
+    for w in reversed(words):
+        if w not in generic_ignore and len(w) > 2:
+            return w
+            
     return ""
 
 

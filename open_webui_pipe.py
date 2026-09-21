@@ -103,15 +103,19 @@ class Pipe:
         self._sync_llm_with_valves()
         messages = body.get("messages", [])
         prompt = ""
-        if messages:
-            last_message = messages[-1]
-            if isinstance(last_message, dict):
-                prompt = last_message.get("content", "")
-            elif hasattr(last_message, "content"):
-                prompt = str(last_message.content)
+        normalized_messages = []
+        for msg in messages:
+            if isinstance(msg, dict):
+                normalized_messages.append(msg)
+                prompt = msg.get("content", "")
+            elif hasattr(msg, "content"):
+                prompt = str(msg.content)
+                normalized_messages.append({"role": "user", "content": prompt})
+            else:
+                normalized_messages.append(msg)
 
         state_input = {
-            "messages": messages,
+            "messages": normalized_messages,
             "user_query": prompt,
         }
 

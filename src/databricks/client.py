@@ -183,7 +183,7 @@ class DatabricksCEClient:
             )
             status_obj = getattr(response, "status", None)
             state_val = getattr(status_obj, "state", "UNKNOWN")
-            
+
             error_msg = None
             if str(state_val) == "StatementState.FAILED" or str(state_val) == "FAILED":
                 err_obj = getattr(status_obj, "error", None)
