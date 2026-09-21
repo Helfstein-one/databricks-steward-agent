@@ -54,9 +54,9 @@ from src.agent.state import AgentState
 )
 def test_adversarial_negation_rejection(neg_query: str) -> None:
     """Empirically verify that negative expressions containing confirmation keywords return False."""
-    assert (
-        _is_confirmation(neg_query) is False
-    ), f"Negation rejection failed for query: '{neg_query}'"
+    assert _is_confirmation(neg_query) is False, (
+        f"Negation rejection failed for query: '{neg_query}'"
+    )
 
 
 @pytest.mark.parametrize(
@@ -131,13 +131,13 @@ def test_adversarial_negation_prevents_deployment_in_graph() -> None:
     }
 
     # If deploy_and_materialize_data_product were called, mock will catch it
-    with patch(
-        "src.agent.tools.deploy_and_materialize_data_product"
-    ) as mock_deploy:
+    with patch("src.agent.tools.deploy_and_materialize_data_product") as mock_deploy:
         output = steward_node(state)
 
         # deploy must NOT have been called!
-        assert mock_deploy.call_count == 0, "Security Guard Failed: deploy called on negative query!"
+        assert mock_deploy.call_count == 0, (
+            "Security Guard Failed: deploy called on negative query!"
+        )
 
         # state must not report deployment success
         assert output.get("job_result") is None
@@ -215,16 +215,22 @@ def test_anaphoric_resolution_from_message_history_fallback() -> None:
     ]
     query = "propor um etl gold a partir dessa tabela"
     resolved = _resolve_anaphoric_entity(query, messages, state=None)
-    assert resolved == "orders", f"Failed to resolve 'orders' from message history, got '{resolved}'"
+    assert resolved == "orders", (
+        f"Failed to resolve 'orders' from message history, got '{resolved}'"
+    )
 
 
 def test_anaphoric_resolution_recency_in_multi_turn_history() -> None:
     """Adversarial test: In a multi-turn conversation with multiple previews, resolve to the MOST RECENT entity."""
     messages = [
         HumanMessage(content="consulte os dados da tabela products"),
-        AIMessage(content="### 📊 Amostra de Dados da Tabela: `workspace.default.products`\n| id | name |"),
+        AIMessage(
+            content="### 📊 Amostra de Dados da Tabela: `workspace.default.products`\n| id | name |"
+        ),
         HumanMessage(content="agora consulte os dados da tabela customers"),
-        AIMessage(content="### 📊 Amostra de Dados da Tabela: `workspace.default.customers`\n| customer_id | name |"),
+        AIMessage(
+            content="### 📊 Amostra de Dados da Tabela: `workspace.default.customers`\n| customer_id | name |"
+        ),
     ]
     query = "propor um etl gold a partir dessa tabela"
     resolved = _resolve_anaphoric_entity(query, messages, state=None)
@@ -391,4 +397,3 @@ def test_e2e_journey_step_failure_handling(mock_env) -> None:
         pytest.raises(AssertionError, match="Step 1: Empty response received"),
     ):
         test_e2e_journey.run_e2e_journey()
-

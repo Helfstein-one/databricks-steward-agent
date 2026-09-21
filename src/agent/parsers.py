@@ -131,11 +131,10 @@ def _resolve_anaphoric_entity(query: str, messages: list[Any], state: dict[str, 
                 )
                 if match_hint:
                     return match_hint.group(1)
-            if getattr(msg, "type", "") == "human":
-                if _is_data_preview_query(content):
-                    t = _extract_table_or_entity(content)
-                    if t and t != "medallion_silver_transactions":
-                        return t.split(".")[-1]
+            if getattr(msg, "type", "") == "human" and _is_data_preview_query(content):
+                t = _extract_table_or_entity(content)
+                if t and t != "medallion_silver_transactions":
+                    return t.split(".")[-1]
     return None
 
 

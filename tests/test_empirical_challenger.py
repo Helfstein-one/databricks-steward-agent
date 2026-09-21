@@ -25,6 +25,7 @@ from src.gitops.git_client import GitClient
 # 1. Turn 1: Preview Query Variations
 # ==============================================================================
 
+
 @pytest.mark.parametrize(
     "query,expected_entity",
     [
@@ -39,7 +40,10 @@ from src.gitops.git_client import GitClient
         ("amostra de dados da tabela customers", "customers"),
         ("quero ver os dados de customers", "customers"),
         ("consulte os dados da tabela workspace.default.customers", "workspace.default.customers"),
-        ("mostrar dados da tabela workspace.default.customers LIMIT 5", "workspace.default.customers"),
+        (
+            "mostrar dados da tabela workspace.default.customers LIMIT 5",
+            "workspace.default.customers",
+        ),
         ("select * from customers", "customers"),
         ("SELECT * FROM workspace.default.customers LIMIT 10", "workspace.default.customers"),
     ],
@@ -47,7 +51,9 @@ from src.gitops.git_client import GitClient
 def test_turn1_preview_variations(query: str, expected_entity: str) -> None:
     assert _is_data_preview_query(query), f"Failed to detect preview query: {query}"
     extracted = _extract_table_or_entity(query)
-    assert extracted == expected_entity, f"Extracted '{extracted}' != expected '{expected_entity}' for '{query}'"
+    assert extracted == expected_entity, (
+        f"Extracted '{extracted}' != expected '{expected_entity}' for '{query}'"
+    )
 
 
 # ==============================================================================
@@ -61,6 +67,7 @@ TURN1_ASSISTANT_MD = (
     "| 1 | Corp A | Enterprise |\n\n"
     "💡 *Dica: Para gerar um pipeline ETL a partir desta tabela, peça: 'propor etl a partir de customers'.*"
 )
+
 
 @pytest.mark.parametrize(
     "turn2_query,expected_resolved",
@@ -84,7 +91,9 @@ def test_turn2_gold_anaphora_resolution(turn2_query: str, expected_resolved: str
 
     # Test resolving from message history alone (as in stateless Open WebUI)
     resolved = _resolve_anaphoric_entity(turn2_query, messages, state={})
-    assert resolved == expected_resolved, f"Failed resolving anaphora for '{turn2_query}': got '{resolved}'"
+    assert resolved == expected_resolved, (
+        f"Failed resolving anaphora for '{turn2_query}': got '{resolved}'"
+    )
 
     # Test full graph execution
     graph = create_steward_graph()
@@ -103,6 +112,7 @@ def test_turn2_gold_anaphora_resolution(turn2_query: str, expected_resolved: str
 # ==============================================================================
 # 3. Turn 3: Affirmative Confirmation Variations
 # ==============================================================================
+
 
 @pytest.mark.parametrize(
     "confirm_query",
@@ -132,6 +142,7 @@ def test_turn3_affirmative_confirmations(confirm_query: str) -> None:
 # ==============================================================================
 # 4. Adversarial Findings: Vulnerabilities and Traps
 # ==============================================================================
+
 
 def test_vulnerability_negative_confirmation_trap() -> None:
     """Demonstrate vulnerability: Negative phrases containing confirmation words trigger deployment!
@@ -169,15 +180,14 @@ def test_vulnerability_silver_bronze_layer_entity_collision() -> None:
 # 5. Open WebUI Pipe End-to-End Simulation
 # ==============================================================================
 
+
 def test_pipe_3_turn_journey() -> None:
     """Simulate exact 3-turn user interaction through Open WebUI Pipe."""
     pipe = Pipe()
 
     # Turn 1: Preview
     body1 = {
-        "messages": [
-            {"role": "user", "content": "consulte os dados da tabela customers"}
-        ],
+        "messages": [{"role": "user", "content": "consulte os dados da tabela customers"}],
         "stream": False,
     }
     resp1 = pipe.pipe(body1)
@@ -195,9 +205,9 @@ def test_pipe_3_turn_journey() -> None:
     }
     resp2 = pipe.pipe(body2)
     assert isinstance(resp2, str)
-    assert "PySpark" in resp2 or "CREATE OR REPLACE TABLE" in resp2 or "Medallion Pipeline" in resp2, (
-        f"Turn 2 failed: {resp2[:200]}"
-    )
+    assert (
+        "PySpark" in resp2 or "CREATE OR REPLACE TABLE" in resp2 or "Medallion Pipeline" in resp2
+    ), f"Turn 2 failed: {resp2[:200]}"
 
     # Turn 3: Confirmation
     body3 = {
@@ -225,6 +235,7 @@ def test_pipe_3_turn_journey() -> None:
 # ==============================================================================
 # 6. Edge Cases: Malformed Inputs, Extreme Strings, ReDoS, and State Leakage
 # ==============================================================================
+
 
 def test_graph_empty_messages() -> None:
     graph = create_steward_graph()
@@ -269,6 +280,7 @@ def test_graph_special_characters_resilience() -> None:
 # 7. GitOps Force Add Verification
 # ==============================================================================
 
+
 def test_git_client_force_add(tmp_path: Any) -> None:
     """Verify GitClient commits files staged with -f even if ignored by gitignore."""
     git_client = GitClient(repo_path=tmp_path)
@@ -278,7 +290,9 @@ def test_git_client_force_add(tmp_path: Any) -> None:
     gitignore = tmp_path / ".gitignore"
     gitignore.write_text("pipelines/\n")
     git_client._run_git(["add", ".gitignore"])
-    git_client._run_git(["-c", "user.name=Test", "-c", "user.email=t@test.com", "commit", "-m", "add gitignore"])
+    git_client._run_git(
+        ["-c", "user.name=Test", "-c", "user.email=t@test.com", "commit", "-m", "add gitignore"]
+    )
 
     # Now use commit_and_push_to_main on a file inside pipelines/
     files = {"pipelines/test_prod/schema.sql": "SELECT 1;"}
