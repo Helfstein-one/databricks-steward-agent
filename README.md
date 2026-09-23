@@ -1,5 +1,7 @@
 # Databricks Steward Agent
 
+[![CI Pipeline](https://github.com/Helfstein-one/databricks-steward-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Helfstein-one/databricks-steward-agent/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/Helfstein-one/databricks-steward-agent/graph/badge.svg)](https://codecov.io/gh/Helfstein-one/databricks-steward-agent)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Databricks SDK](https://img.shields.io/badge/Databricks-SDK%200.28+-orange.svg)](https://docs.databricks.com/en/dev-tools/sdk-python.html)
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.2+-purple.svg)](https://github.com/langchain-ai/langgraph)

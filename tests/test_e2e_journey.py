@@ -59,12 +59,12 @@ def run_e2e_journey() -> bool:
     print(f"[Agent Response 1] ({elapsed1:.2f}s):\n{resp1}\n")
 
     # Assertions for Step 1
-    assert any(
-        k in resp1.lower() for k in ("amostra de dados", "customers", "customer_id", "|")
-    ), f"Step 1: Response does not contain expected customer preview table:\n{resp1[:300]}"
-    assert (
-        "❌ **Erro ao consultar Databricks:**" not in resp1
-    ), f"Step 1: Databricks preview returned an error:\n{resp1}"
+    assert any(k in resp1.lower() for k in ("amostra de dados", "customers", "customer_id", "|")), (
+        f"Step 1: Response does not contain expected customer preview table:\n{resp1[:300]}"
+    )
+    assert "❌ **Erro ao consultar Databricks:**" not in resp1, (
+        f"Step 1: Databricks preview returned an error:\n{resp1}"
+    )
 
     messages.append({"role": "assistant", "content": resp1})
     print("✅ Step 1 Verified: Customer preview returned successfully with live data.")
@@ -87,9 +87,9 @@ def run_e2e_journey() -> bool:
     # Assertions for Step 2
     assert "```python" in resp2 or "```py" in resp2, "Step 2: Missing PySpark code block"
     assert "```sql" in resp2, "Step 2: Missing SparkSQL DDL block"
-    assert any(
-        k in resp2.lower() for k in ("confirmar", "deseja confirmar", "prosseguir")
-    ), f"Step 2: Missing confirmation prompt in response:\n{resp2[-300:]}"
+    assert any(k in resp2.lower() for k in ("confirmar", "deseja confirmar", "prosseguir")), (
+        f"Step 2: Missing confirmation prompt in response:\n{resp2[-300:]}"
+    )
 
     messages.append({"role": "assistant", "content": resp2})
     print("✅ Step 2 Verified: Gold ETL code generated with PySpark and SparkSQL DDL.")
@@ -118,9 +118,9 @@ def run_e2e_journey() -> bool:
     assert "SQLFluff" in resp3, "Step 3: Missing SQLFluff report in CI Gate"
 
     # Assertions on Databricks Job creation
-    assert any(
-        k in resp3 for k in ("Databricks Workflow Job", "Job ID")
-    ), "Step 3: Missing Databricks Workflow Job section in response"
+    assert any(k in resp3 for k in ("Databricks Workflow Job", "Job ID")), (
+        "Step 3: Missing Databricks Workflow Job section in response"
+    )
 
     job_match = re.search(r"Job ID[:\*]*\s*`?(\d+)`?", resp3)
     assert job_match is not None, f"Step 3: Could not parse numeric Job ID from output:\n{resp3}"
@@ -133,7 +133,9 @@ def run_e2e_journey() -> bool:
         print(f"✅ Step 3 Extracted Remote Run ID: {created_run_id}")
 
     messages.append({"role": "assistant", "content": resp3})
-    print("✅ Step 3 Verified: Full lifecycle completed (CI APPROVED, GitOps committed, Databricks Job created).")
+    print(
+        "✅ Step 3 Verified: Full lifecycle completed (CI APPROVED, GitOps committed, Databricks Job created)."
+    )
 
     # -------------------------------------------------------------------------
     # STEP 4: Remote Databricks SDK Verification
@@ -164,7 +166,9 @@ def run_e2e_journey() -> bool:
     print(f"✅ Verified Remote Runs Dispatched: {len(runs)} run(s) found.")
     for r in runs[:3]:
         state = r.state
-        print(f"   - Run ID: {r.run_id}, LifeCycle: {state.life_cycle_state if state else 'UNKNOWN'}")
+        print(
+            f"   - Run ID: {r.run_id}, LifeCycle: {state.life_cycle_state if state else 'UNKNOWN'}"
+        )
 
     print_banner("🎉 ALL ACCEPTANCE CRITERIA VERIFIED SUCCESSFULLY!")
     print("Summary of E2E Validation:")
@@ -186,5 +190,6 @@ if __name__ == "__main__":
     except Exception as exc:  # noqa: BLE001
         print(f"\n❌ E2E Journey Failed with Exception: {exc}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

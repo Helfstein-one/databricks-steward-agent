@@ -1,10 +1,10 @@
 """Empirical stress testing and challenger verification for DatabricksCEClient."""
 
-from unittest.mock import MagicMock, patch
-import pytest
+from unittest.mock import MagicMock
 
 from databricks.sdk.service.jobs import Source, SqlTask, SqlTaskFile, Task
 from databricks.sdk.service.workspace import ImportFormat, Language
+
 from src.databricks.client import DatabricksCEClient, DatabricksClientError
 
 
@@ -69,7 +69,9 @@ def test_warehouse_resolution_empty_list() -> None:
 
 def test_create_or_update_pipeline_job_task_structure() -> None:
     """Verify create_or_update_pipeline_job creates Task with correct SDK structure."""
-    client = DatabricksCEClient(host="https://fake.databricks.com", token="fake", warehouse_id="wh-123")
+    client = DatabricksCEClient(
+        host="https://fake.databricks.com", token="fake", warehouse_id="wh-123"
+    )
     client.client = MagicMock()
 
     mock_job = MagicMock(job_id="998877")
@@ -116,13 +118,17 @@ def test_create_or_update_pipeline_job_task_structure() -> None:
 
 def test_preview_table_data_graceful_error_on_query_failure() -> None:
     """Verify preview_table_data returns graceful markdown when execute_query returns error dict."""
-    client = DatabricksCEClient(host="https://fake.databricks.com", token="fake", warehouse_id="wh-123")
+    client = DatabricksCEClient(
+        host="https://fake.databricks.com", token="fake", warehouse_id="wh-123"
+    )
     client.client = MagicMock()
 
-    client.execute_query = MagicMock(return_value={
-        "status": "StatementState.FAILED",
-        "error": "[TABLE_OR_VIEW_NOT_FOUND] Table foo does not exist",
-    })
+    client.execute_query = MagicMock(
+        return_value={
+            "status": "StatementState.FAILED",
+            "error": "[TABLE_OR_VIEW_NOT_FOUND] Table foo does not exist",
+        }
+    )
 
     res = client.preview_table_data("workspace.default.foo", limit=5)
     assert res["row_count"] == 0
@@ -139,7 +145,9 @@ def test_preview_table_data_with_none_data_array_empty_table() -> None:
     have result.data_array == None (not []).
     This reproduces the TypeError: object of type 'NoneType' has no len().
     """
-    client = DatabricksCEClient(host="https://fake.databricks.com", token="fake", warehouse_id="wh-123")
+    client = DatabricksCEClient(
+        host="https://fake.databricks.com", token="fake", warehouse_id="wh-123"
+    )
     client.client = MagicMock()
 
     mock_result = MagicMock()
@@ -149,12 +157,14 @@ def test_preview_table_data_with_none_data_array_empty_table() -> None:
     col.name = "id"
     mock_manifest.schema.columns = [col]
 
-    client.execute_query = MagicMock(return_value={
-        "status": "StatementState.SUCCEEDED",
-        "error": None,
-        "result": mock_result,
-        "manifest": mock_manifest,
-    })
+    client.execute_query = MagicMock(
+        return_value={
+            "status": "StatementState.SUCCEEDED",
+            "error": None,
+            "result": mock_result,
+            "manifest": mock_manifest,
+        }
+    )
 
     # Verify that data_array=None does not raise TypeError and returns graceful empty table
     res = client.preview_table_data("workspace.default.reviewer_test_tab", limit=10)
@@ -168,9 +178,13 @@ def test_preview_table_data_unhandled_client_error_on_warehouse_failure() -> Non
 
     preview_table_data catches DatabricksClientError and returns a graceful markdown error dict.
     """
-    client = DatabricksCEClient(host="https://fake.databricks.com", token="fake", warehouse_id="wh-123")
+    client = DatabricksCEClient(
+        host="https://fake.databricks.com", token="fake", warehouse_id="wh-123"
+    )
     client.client = MagicMock()
-    client.execute_query = MagicMock(side_effect=DatabricksClientError("Warehouse endpoint is terminated"))
+    client.execute_query = MagicMock(
+        side_effect=DatabricksClientError("Warehouse endpoint is terminated")
+    )
 
     res = client.preview_table_data("workspace.default.customers", limit=5)
     assert res["row_count"] == 0
@@ -178,4 +192,3 @@ def test_preview_table_data_unhandled_client_error_on_warehouse_failure() -> Non
     assert res["rows"] == []
     assert "❌ **Erro ao consultar Databricks:**" in res["markdown_table"]
     assert "Warehouse endpoint is terminated" in res["markdown_table"]
-
