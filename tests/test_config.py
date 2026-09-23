@@ -11,7 +11,7 @@ def test_default_settings():
     assert cfg.databricks_default_catalog == "workspace"
     assert cfg.databricks_default_schema == "default"
     assert "localhost" in cfg.local_llm_base_url or "127.0.0.1" in cfg.local_llm_base_url
-    assert cfg.local_llm_model == "qwen2.5-coder:7b"
+    assert cfg.local_llm_model == "llama3.2:3b"
     assert cfg.local_llm_temperature == 0.1
     assert cfg.github_base_branch == "workspace"
     assert cfg.default_query_limit == 50
