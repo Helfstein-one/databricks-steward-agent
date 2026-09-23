@@ -133,7 +133,7 @@ def test_open_webui_pipe_valves_configuration():
     assert hasattr(pipe, "valves")
     assert pipe.valves.DATABRICKS_DEFAULT_CATALOG == "workspace"
     assert pipe.valves.DATABRICKS_DEFAULT_SCHEMA == "default"
-    assert pipe.valves.LOCAL_LLM_MODEL == "qwen2.5-coder:7b"
+    assert pipe.valves.LOCAL_LLM_MODEL == "llama3.2:3b"
     assert pipe.valves.GITHUB_BASE_BRANCH == "workspace"
 
 
