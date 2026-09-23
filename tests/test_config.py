@@ -8,12 +8,12 @@ from src.config import Settings, settings
 def test_default_settings():
     """Verify default values of Settings."""
     cfg = Settings()
-    assert cfg.databricks_default_catalog == "main"
+    assert cfg.databricks_default_catalog == "workspace"
     assert cfg.databricks_default_schema == "default"
     assert "localhost" in cfg.local_llm_base_url or "127.0.0.1" in cfg.local_llm_base_url
     assert cfg.local_llm_model == "qwen2.5-coder:7b"
     assert cfg.local_llm_temperature == 0.1
-    assert cfg.github_base_branch == "main"
+    assert cfg.github_base_branch == "workspace"
     assert cfg.default_query_limit == 50
     assert cfg.max_query_limit == 200
     assert isinstance(cfg.semantic_models_path, Path)

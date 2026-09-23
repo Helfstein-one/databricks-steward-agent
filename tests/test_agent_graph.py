@@ -131,10 +131,10 @@ def test_open_webui_pipe_valves_configuration():
     """Verify Valves model exposes proper defaults and configuration fields."""
     pipe = Pipe()
     assert hasattr(pipe, "valves")
-    assert pipe.valves.DATABRICKS_DEFAULT_CATALOG == "main"
+    assert pipe.valves.DATABRICKS_DEFAULT_CATALOG == "workspace"
     assert pipe.valves.DATABRICKS_DEFAULT_SCHEMA == "default"
     assert pipe.valves.LOCAL_LLM_MODEL == "qwen2.5-coder:7b"
-    assert pipe.valves.GITHUB_BASE_BRANCH == "main"
+    assert pipe.valves.GITHUB_BASE_BRANCH == "workspace"
 
 
 def test_open_webui_pipe_execution_non_streaming():
