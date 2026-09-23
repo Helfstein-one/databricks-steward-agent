@@ -11,18 +11,21 @@ def open_pull_request(
     ci_report: Any,
     active_diagram: str,
 ) -> dict[str, Any]:
-    files = {
-        f"pipelines/{product_name}/etl.py": pyspark_code,
-        f"pipelines/{product_name}/schema.sql": sparksql_code,
-    }
-    res = create_data_product_pr(
-        product_name=product_name,
-        files=files,
-        ci_report=ci_report,
-        diagram_md=active_diagram,
-        dry_run=True,
-    )
-    return res.model_dump() if hasattr(res, "model_dump") else res.__dict__
+    try:
+        files = {
+            f"pipelines/{product_name}/etl.py": pyspark_code,
+            f"pipelines/{product_name}/schema.sql": sparksql_code,
+        }
+        res = create_data_product_pr(
+            product_name=product_name,
+            files=files,
+            ci_report=ci_report,
+            diagram_md=active_diagram,
+            dry_run=True,
+        )
+        return res.model_dump() if hasattr(res, "model_dump") else res.__dict__
+    except Exception as e:
+        return {"status": "error", "error": f"❌ Erro GitOps: {e}"}
 
 
 class GitOpsAdapter(IGitOpsAdapter):
