@@ -87,3 +87,80 @@ def test_ci_adapter_run_pipeline():
         res = adapter.run_pipeline("code_py", "code_sql")
         mock_ci.assert_called_once_with("code_py", "code_sql")
         assert res == expected
+
+
+def test_databricks_adapter_error_handling():
+    adapter = DatabricksAdapter()
+
+    # execute_query exception
+    with patch("src.adapters.databricks_adapter._client_instance") as mock_client:
+        mock_client.execute_query.side_effect = Exception("API Down")
+        res = adapter.execute_query("SELECT 1")
+        assert len(res) == 1
+        assert "❌ Erro ao consultar Databricks: API Down" in res[0].get("error", "")
+
+    # preview_table exception
+    with patch("src.adapters.databricks_adapter._client_instance") as mock_client:
+        mock_client.preview_table_data.side_effect = Exception("Table Not Found")
+        res = adapter.preview_table("catalog.schema.missing_table")
+        assert "❌ Erro ao consultar Databricks: Table Not Found" in res
+
+    # inspect_schema exception
+    with patch(
+        "src.adapters.databricks_adapter.inspect_unity_catalog",
+        side_effect=Exception("Unity Catalog Unreachable"),
+    ):
+        res = adapter.inspect_schema()
+        assert "❌ Erro ao consultar Databricks: Unity Catalog Unreachable" in res
+
+    # deploy_job exception
+    with patch(
+        "src.adapters.databricks_adapter.deploy_and_materialize_data_product",
+        side_effect=Exception("Deployment Failed"),
+    ):
+        res = adapter.deploy_job("prod_err", "py", "sql")
+        assert res.get("status") == "error"
+        assert "❌ Erro ao consultar Databricks: Deployment Failed" in res.get("error", "")
+
+
+def test_gitops_adapter_error_handling():
+    adapter = GitOpsAdapter()
+    import subprocess
+    import requests
+
+    # RequestException
+    with patch(
+        "src.adapters.gitops_adapter.create_data_product_pr",
+        side_effect=requests.exceptions.RequestException("GitHub API timeout"),
+    ):
+        res = adapter.commit_and_push("prod", "py", "sql", None, "diagram")
+        assert res.get("status") == "error"
+        assert "❌ Erro GitOps: GitHub API timeout" in res.get("error", "")
+
+    # SubprocessError
+    with patch(
+        "src.adapters.gitops_adapter.create_data_product_pr",
+        side_effect=subprocess.SubprocessError("Git command failed"),
+    ):
+        res = adapter.commit_and_push("prod", "py", "sql", None, "diagram")
+        assert res.get("status") == "error"
+        assert "❌ Erro GitOps: Git command failed" in res.get("error", "")
+
+    # General Exception
+    with patch(
+        "src.adapters.gitops_adapter.create_data_product_pr",
+        side_effect=Exception("API Down"),
+    ):
+        res = adapter.commit_and_push("prod", "py", "sql", None, "diagram")
+        assert res.get("status") == "error"
+        assert "❌ Erro GitOps: API Down" in res.get("error", "")
+
+
+def test_ci_adapter_error_handling():
+    adapter = CiAdapter()
+    with patch(
+        "src.adapters.ci_adapter.run_ci_pipeline", side_effect=Exception("CI Execution Failed")
+    ):
+        res = adapter.run_pipeline("py_code", "sql_code")
+        assert res.get("success") is False
+        assert "❌ Erro CI: CI Execution Failed" in res.get("error", "")
