@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import sys
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
@@ -17,7 +17,6 @@ from src.application.intent_router import (
     is_confirmation,
     is_data_preview_query,
 )
-
 
 # ============================================================================
 # 1. Tests for Semantic Intent Router (src/application/intent_router.py)
@@ -37,8 +36,8 @@ def test_intent_router_all_tags_with_mock_llm() -> None:
     tags = ["PREVIEW", "SCHEMA", "DIAGRAM", "ETL", "CONFIRM", "GREETING", "OTHER"]
 
     for tag in tags:
-        def _fake_llm(messages: Any) -> AIMessage:
-            return AIMessage(content=f"  {tag}\n")
+        def _fake_llm(messages: Any, t: str = tag) -> AIMessage:
+            return AIMessage(content=f"  {t}\n")
 
         mock_llm = RunnableLambda(_fake_llm)
 

@@ -300,7 +300,7 @@ entities:
     sql: SUM(lifetime_spend)
     description: Receita total acumulada da carteira de clientes
 - name: workspace_default_medallion_gold_customer_kpis
-  table: main.default.workspace_default_medallion_gold_customer_kpis
+  table: workspace.default.workspace_default_medallion_gold_customer_kpis
   primary_key: id
   layer: gold
   description: Data Product workspace_default_medallion_gold_customer_kpis gerado
@@ -338,7 +338,7 @@ entities:
     to_column: category
     type: many_to_one
 - name: medallion_gold_sales_summary
-  table: main.default.medallion_gold_sales_summary
+  table: workspace.default.medallion_gold_sales_summary
   primary_key: id
   layer: gold
   description: Data Product medallion_gold_sales_summary gerado e materializado no
