@@ -134,7 +134,7 @@ def test_open_webui_pipe_valves_configuration():
     assert pipe.valves.DATABRICKS_DEFAULT_CATALOG == "workspace"
     assert pipe.valves.DATABRICKS_DEFAULT_SCHEMA == "default"
     assert pipe.valves.LOCAL_LLM_MODEL == "llama3.2:3b"
-    assert pipe.valves.GITHUB_BASE_BRANCH == "workspace"
+    assert pipe.valves.GITHUB_BASE_BRANCH == "main"
 
 
 def test_open_webui_pipe_execution_non_streaming():

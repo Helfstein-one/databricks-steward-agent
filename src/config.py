@@ -18,7 +18,7 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("DATABRICKS_WAREHOUSE_ID", "")
     )
     databricks_default_catalog: str = Field(
-        default_factory=lambda: os.getenv("DATABRICKS_DEFAULT_CATALOG", "main")
+        default_factory=lambda: os.getenv("DATABRICKS_DEFAULT_CATALOG", "workspace")
     )
     databricks_default_schema: str = Field(
         default_factory=lambda: os.getenv("DATABRICKS_DEFAULT_SCHEMA", "default")
@@ -29,7 +29,7 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1")
     )
     local_llm_model: str = Field(
-        default_factory=lambda: os.getenv("LOCAL_LLM_MODEL", "qwen2.5-coder:7b")
+        default_factory=lambda: os.getenv("LOCAL_LLM_MODEL", "llama3.2:3b")
     )
     local_llm_api_key: str = Field(default_factory=lambda: os.getenv("LOCAL_LLM_API_KEY", "ollama"))
     local_llm_temperature: float = Field(

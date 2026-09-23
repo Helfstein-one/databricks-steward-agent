@@ -9,11 +9,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from src.ci.runner import run_ci_pipeline
+from src.adapters.ci_adapter import CiAdapter
+from src.adapters.databricks_adapter import DatabricksAdapter
+from src.adapters.gitops_adapter import GitOpsAdapter
 from src.config import settings
-from src.databricks.introspector import introspect_catalog
 from src.etl.generator import generate_medallion_pipeline
-from src.gitops.github_pr import create_data_product_pr
 from src.semantic.compiler import SemanticQueryCompiler
 from src.semantic.registry import SemanticRegistry
 from src.visualizer.mermaid import generate_er_diagram, generate_lineage_diagram
@@ -134,32 +134,8 @@ DOMAIN_ALIAS_MAP: dict[str, str] = {
 
 def inspect_unity_catalog(catalog: str | None = None, schema: str | None = None) -> str:
     """Introspect Databricks Unity Catalog tables, columns, and constraints."""
-    from src.databricks.client import DatabricksCEClient
-
-    client = DatabricksCEClient()
-    cat_to_use = catalog or settings.databricks_default_catalog or "workspace"
-    sch_to_use = schema or settings.databricks_default_schema or "default"
-    mode_str = (
-        "🟢 Conectado ao Databricks Real via SDK"
-        if client.is_configured()
-        else "🟡 Modo Demonstração Offline (defina DATABRICKS_HOST e DATABRICKS_TOKEN no .env para conectar ao seu workspace)"
-    )
-
-    entities = introspect_catalog(catalog=cat_to_use, schema=sch_to_use, client=client)
-    actual_cat = entities[0].catalog if entities else cat_to_use
-    actual_sch = entities[0].schema_name if entities else sch_to_use
-    lines = [
-        f"Discovered {len(entities)} entities in {actual_cat}.{actual_sch} (*{mode_str}*):",
-    ]
-    for ent in entities:
-        col_summary = ", ".join([f"`{c.name}` ({c.type})" for c in ent.columns[:6]])
-        lines.append(f"- **`{ent.name}`** (Camada: `{ent.layer or 'unassigned'}`): {col_summary}")
-
-    lines.append(
-        "\n💡 *Nota: Estas são as tabelas físicas inspecionadas no Unity Catalog. "
-        "Para ver os modelos de dados e Data Products da Camada Semântica (ex: `medallion_silver_transactions`, `medallion_gold_sales_kpis`), digite `2` ou peça a modelagem da tabela.*"
-    )
-    return "\n".join(lines)
+    adapter = DatabricksAdapter()
+    return adapter.inspect_schema(catalog=catalog, schema=schema)
 
 
 def load_semantic_models(path: str | Path | None = None) -> str:
@@ -473,7 +449,8 @@ def generate_etl_pipeline(entity_name: str, layer: str = "silver") -> str:
 
 def run_ci(pyspark_code: str | None = None, sparksql_code: str | None = None) -> str:
     """Execute CI quality gate verification with Ruff, SQLFluff, and Anti-pattern rules."""
-    report = run_ci_pipeline(pyspark_code=pyspark_code, sparksql_code=sparksql_code)
+    ci_adapter = CiAdapter()
+    report = ci_adapter.run_pipeline(pyspark_code=pyspark_code, sparksql_code=sparksql_code)
     return report.summary_markdown or report.format_markdown()
 
 
@@ -484,46 +461,38 @@ def submit_gitops_pr(
     diagram_md: str = "",
 ) -> str:
     """Execute CI check and open GitHub PR if quality checks pass."""
-    report = run_ci_pipeline(pyspark_code=pyspark_code, sparksql_code=sparksql_code)
+    ci_adapter = CiAdapter()
+    gitops_adapter = GitOpsAdapter()
+
+    report = ci_adapter.run_pipeline(pyspark_code=pyspark_code, sparksql_code=sparksql_code)
     if not report.is_approved:
         return f"❌ PR Creation Blocked: CI Quality Gate Rejected the pipeline.\n\n{report.summary_markdown}"
 
-    files = {
-        f"pipelines/{product_name}/etl.py": pyspark_code,
-        f"pipelines/{product_name}/schema.sql": sparksql_code,
-    }
-
-    result = create_data_product_pr(
+    result = gitops_adapter.commit_and_push(
         product_name=product_name,
-        files=files,
+        pyspark_code=pyspark_code,
+        sparksql_code=sparksql_code,
         ci_report=report,
-        diagram_md=diagram_md,
-        dry_run=True,
+        active_diagram=diagram_md,
     )
+
+    branch_name = result.get("branch_name", "")
+    commit_sha = result.get("commit_sha", "")
+    pr_url = result.get("pr_url", "")
 
     return (
         f"✅ PR Successfully Created!\n\n"
-        f"- **Branch:** `{result.branch_name}`\n"
-        f"- **Commit SHA:** `{result.commit_sha}`\n"
-        f"- **PR URL:** [{result.pr_url}]({result.pr_url})\n\n"
+        f"- **Branch:** `{branch_name}`\n"
+        f"- **Commit SHA:** `{commit_sha}`\n"
+        f"- **PR URL:** [{pr_url}]({pr_url})\n\n"
         f"#### CI Gate Report\n{report.summary_markdown}"
     )
 
 
 def preview_table_data(table_name: str, limit: int = 10) -> str:
     """Execute a data preview query on Databricks SQL Warehouse and return formatted markdown."""
-    from src.databricks.client import DatabricksCEClient
-
-    client = DatabricksCEClient()
-    res = client.preview_table_data(table_name=table_name, limit=limit)
-    md_table = res.get("markdown_table", "*Nenhum dado encontrado.*")
-    row_count = res.get("row_count", 0)
-    full_table = res.get("table_name", table_name)
-    return (
-        f"### 📊 Amostra de Dados da Tabela: `{full_table}` (Top {row_count} registros)\n\n"
-        f"{md_table}\n\n"
-        f"💡 *Dica: Para gerar um pipeline ETL a partir desta tabela, peça: 'propor etl a partir de {table_name}'.*"
-    )
+    adapter = DatabricksAdapter()
+    return adapter.preview_table_formatted(table_name=table_name, limit=limit)
 
 
 def deploy_and_materialize_data_product(
@@ -533,80 +502,13 @@ def deploy_and_materialize_data_product(
     source_entity: str | None = None,
 ) -> dict[str, Any]:
     """Execute full data product lifecycle: CI Quality Gate, Git commit/push to main, Databricks Job, and Semantic Layer update."""
-    from src.ci.runner import run_ci_pipeline
-    from src.databricks.client import DatabricksCEClient
-    from src.gitops.git_client import GitClient
-    from src.semantic.registry import SemanticRegistry
-    from src.visualizer.mermaid import generate_er_diagram
-
-    # 1. CI Quality Gate
-    ci_rep = run_ci_pipeline(pyspark_code=pyspark_code, sparksql_code=sparksql_code)
-    if not ci_rep.is_approved:
-        return {
-            "status": "ci_failed",
-            "ci_report": ci_rep,
-            "message": f"❌ CI Quality Gate rejeitou o pipeline:\n\n{ci_rep.summary_markdown}",
-        }
-
-    product_slug = re.sub(r"[^a-zA-Z0-9_-]", "-", product_name.replace(".", "-")).lower().strip("-")
-    table_name = f"{settings.databricks_default_catalog}.{settings.databricks_default_schema}.{product_slug.replace('-', '_')}"
-
-    # 2. Git commit & push to main
-    files = {
-        f"pipelines/{product_slug}/etl.py": pyspark_code,
-        f"pipelines/{product_slug}/schema.sql": sparksql_code,
-    }
-    git = GitClient()
-    commit_msg = f"feat(pipeline): add data product {product_slug}"
-    git_res = git.commit_and_push_to_main(files=files, message=commit_msg)
-
-    # 3. Databricks Job Creation & Execution
-    db_client = DatabricksCEClient()
-    job_res = db_client.create_or_update_pipeline_job(
-        job_name=f"DataProduct_{product_slug.replace('-', '_')}",
-        product_slug=product_slug,
-        sql_statement=sparksql_code,
+    adapter = DatabricksAdapter()
+    return adapter.deploy_job(
+        product_name=product_name,
         pyspark_code=pyspark_code,
-    )
-
-    # 4. Inspecionar colunas e registrar na Camada Semântica
-    inferred_cols: list[dict[str, Any]] = []
-    try:
-        preview = db_client.preview_table_data(table_name=table_name, limit=1)
-        for c in preview.get("columns", []):
-            inferred_cols.append({"name": c, "type": "string"})
-    except Exception as err:  # noqa: BLE001
-        logger.debug("Preview inference notice: %s", err)
-
-    if not inferred_cols:
-        col_matches = re.findall(r"`?([a-zA-Z0-9_]+)`?\s+([A-Z]+)", sparksql_code)
-        for c_name, c_type in col_matches:
-            if c_name.upper() not in ("CREATE", "TABLE", "IF", "NOT", "EXISTS", "AS", "SELECT"):
-                inferred_cols.append({"name": c_name, "type": c_type.lower()})
-
-    reg = SemanticRegistry(settings.semantic_models_path)
-    ent_model = reg.register_data_product_entity(
-        entity_name=product_slug.replace("-", "_"),
-        table_name=table_name,
-        columns=inferred_cols
-        or [{"name": "id", "type": "string"}, {"name": "total_amount", "type": "double"}],
+        sparksql_code=sparksql_code,
         source_entity=source_entity,
-        models_dir=settings.semantic_models_path,
     )
-
-    updated_diagram = generate_er_diagram(list(reg.entities.values()), reg.relationships)
-
-    return {
-        "status": "success",
-        "product_name": product_name,
-        "product_slug": product_slug,
-        "table_name": table_name,
-        "ci_report": ci_rep,
-        "git_result": git_res,
-        "job_result": job_res,
-        "entity_model": ent_model,
-        "updated_diagram": updated_diagram,
-    }
 
 
 from langchain_core.tools import tool
