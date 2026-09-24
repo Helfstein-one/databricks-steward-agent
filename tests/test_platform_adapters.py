@@ -29,7 +29,7 @@ def test_databricks_adapter_inspect_schema():
     adapter = DatabricksAdapter()
     expected = "unity catalog schema"
     with patch(
-        "src.adapters.databricks_adapter.inspect_unity_catalog", return_value=expected
+        "src.adapters.databricks_adapter.inspect_unity_catalog_local", return_value=expected
     ) as mock_inspect:
         res = adapter.inspect_schema()
         mock_inspect.assert_called_once()
@@ -40,11 +40,11 @@ def test_databricks_adapter_deploy_job():
     adapter = DatabricksAdapter()
     expected = {"status": "deployed"}
     with patch(
-        "src.adapters.databricks_adapter.deploy_and_materialize_data_product",
+        "src.adapters.databricks_adapter.deploy_and_materialize_data_product_local",
         return_value=expected,
     ) as mock_deploy:
         res = adapter.deploy_job("prod_a", "print('spark')", "SELECT 1")
-        mock_deploy.assert_called_once_with("prod_a", "print('spark')", "SELECT 1")
+        mock_deploy.assert_called_once_with("prod_a", "print('spark')", "SELECT 1", source_entity=None)
         assert res == expected
 
 
@@ -107,7 +107,7 @@ def test_databricks_adapter_error_handling():
 
     # inspect_schema exception
     with patch(
-        "src.adapters.databricks_adapter.inspect_unity_catalog",
+        "src.adapters.databricks_adapter.inspect_unity_catalog_local",
         side_effect=Exception("Unity Catalog Unreachable"),
     ):
         res = adapter.inspect_schema()
@@ -115,7 +115,7 @@ def test_databricks_adapter_error_handling():
 
     # deploy_job exception
     with patch(
-        "src.adapters.databricks_adapter.deploy_and_materialize_data_product",
+        "src.adapters.databricks_adapter.deploy_and_materialize_data_product_local",
         side_effect=Exception("Deployment Failed"),
     ):
         res = adapter.deploy_job("prod_err", "py", "sql")

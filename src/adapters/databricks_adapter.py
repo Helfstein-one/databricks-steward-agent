@@ -2,7 +2,6 @@ import logging
 import re
 from typing import Any
 
-from src.agent.tools import deploy_and_materialize_data_product, inspect_unity_catalog
 from src.databricks.client import DatabricksCEClient
 from src.databricks.introspector import introspect_catalog
 from src.domain.ports.databricks_port import IDatabricksAdapter
@@ -186,3 +185,4 @@ class DatabricksAdapter(IDatabricksAdapter):
             )
         except Exception as e:
             return {"status": "error", "error": f"❌ Erro ao consultar Databricks: {e}"}
+

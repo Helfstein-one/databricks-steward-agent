@@ -301,7 +301,7 @@ entities:
     description: Receita total acumulada da carteira de clientes
 - name: workspace_default_medallion_gold_customer_kpis
   table: workspace.default.workspace_default_medallion_gold_customer_kpis
-  primary_key: id
+  primary_key: user_id
   layer: gold
   description: Data Product workspace_default_medallion_gold_customer_kpis gerado
     e materializado no Databricks Unity Catalog.
@@ -309,22 +309,54 @@ entities:
   - workspace_default_medallion_gold_customer_kpis
   - workspace default medallion gold customer kpis
   dimensions:
-  - name: id
+  - name: Gold
     type: string
-    column: id
-    description: Coluna id do data product workspace_default_medallion_gold_customer_kpis
-  - name: name
+    column: Gold
+    description: Coluna Gold do data product workspace_default_medallion_gold_customer_kpis
+  - name: ayer
     type: string
-    column: name
-    description: Coluna name do data product workspace_default_medallion_gold_customer_kpis
-  - name: category
+    column: ayer
+    description: Coluna ayer do data product workspace_default_medallion_gold_customer_kpis
+  - name: medallion_gold_customer_kpis
     type: string
-    column: category
-    description: Coluna category do data product workspace_default_medallion_gold_customer_kpis
-  - name: amount
+    column: medallion_gold_customer_kpis
+    description: Coluna medallion_gold_customer_kpis do data product workspace_default_medallion_gold_customer_kpis
+  - name: OR
     type: string
-    column: amount
-    description: Coluna amount do data product workspace_default_medallion_gold_customer_kpis
+    column: OR
+    description: Coluna OR do data product workspace_default_medallion_gold_customer_kpis
+  - name: medallion_gold_customer_kpis
+    type: string
+    column: medallion_gold_customer_kpis
+    description: Coluna medallion_gold_customer_kpis do data product workspace_default_medallion_gold_customer_kpis
+  - name: DELTA
+    type: string
+    column: DELTA
+    description: Coluna DELTA do data product workspace_default_medallion_gold_customer_kpis
+  - name: DISTINCT
+    type: string
+    column: DISTINCT
+    description: Coluna DISTINCT do data product workspace_default_medallion_gold_customer_kpis
+  - name: 'true'
+    type: string
+    column: 'true'
+    description: Coluna true do data product workspace_default_medallion_gold_customer_kpis
+  - name: user_id
+    type: string
+    column: user_id
+    description: Coluna user_id do data product workspace_default_medallion_gold_customer_kpis
+  - name: total_portfolio_revenue
+    type: string
+    column: total_portfolio_revenue
+    description: Coluna total_portfolio_revenue do data product workspace_default_medallion_gold_customer_kpis
+  - name: silver_medallion_gold_customer_kpis
+    type: string
+    column: silver_medallion_gold_customer_kpis
+    description: Coluna silver_medallion_gold_customer_kpis do data product workspace_default_medallion_gold_customer_kpis
+  - name: medallion_gold_customer_kpis
+    type: string
+    column: medallion_gold_customer_kpis
+    description: Coluna medallion_gold_customer_kpis do data product workspace_default_medallion_gold_customer_kpis
   metrics:
   - name: total_workspace_default_medallion_gold_customer_kpis_records
     type: count
@@ -333,13 +365,13 @@ entities:
   relationships:
   - name: medallion_silver_transactions_to_workspace_default_medallion_gold_customer_kpis
     from_entity: medallion_silver_transactions
-    from_column: category
+    from_column: user_id
     to_entity: workspace_default_medallion_gold_customer_kpis
-    to_column: category
+    to_column: user_id
     type: many_to_one
 - name: medallion_gold_sales_summary
   table: workspace.default.medallion_gold_sales_summary
-  primary_key: id
+  primary_key: REPLACE
   layer: gold
   description: Data Product medallion_gold_sales_summary gerado e materializado no
     Databricks Unity Catalog.
@@ -347,22 +379,22 @@ entities:
   - medallion_gold_sales_summary
   - medallion gold sales summary
   dimensions:
-  - name: id
+  - name: REPLACE
     type: string
-    column: id
-    description: Coluna id do data product medallion_gold_sales_summary
-  - name: name
+    column: REPLACE
+    description: Coluna REPLACE do data product medallion_gold_sales_summary
+  - name: medallion_gold_sales_summary
     type: string
-    column: name
-    description: Coluna name do data product medallion_gold_sales_summary
-  - name: category
+    column: medallion_gold_sales_summary
+    description: Coluna medallion_gold_sales_summary do data product medallion_gold_sales_summary
+  - name: total_orders
     type: string
-    column: category
-    description: Coluna category do data product medallion_gold_sales_summary
-  - name: amount
+    column: total_orders
+    description: Coluna total_orders do data product medallion_gold_sales_summary
+  - name: medallion_silver_transactions
     type: string
-    column: amount
-    description: Coluna amount do data product medallion_gold_sales_summary
+    column: medallion_silver_transactions
+    description: Coluna medallion_silver_transactions do data product medallion_gold_sales_summary
   metrics:
   - name: total_medallion_gold_sales_summary_records
     type: count
@@ -371,9 +403,9 @@ entities:
   relationships:
   - name: medallion_silver_transactions_to_medallion_gold_sales_summary
     from_entity: medallion_silver_transactions
-    from_column: category
+    from_column: transaction_id
     to_entity: medallion_gold_sales_summary
-    to_column: category
+    to_column: transaction_id
     type: many_to_one
 - name: brasa
   table: workspace.default.brasa
@@ -405,6 +437,44 @@ entities:
     type: avg
     sql: AVG(total_amount)
     description: Média de total_amount
+- name: test_adversarial_gold_product
+  table: workspace.default.test_adversarial_gold_product
+  primary_key: id
+  layer: gold
+  description: Data Product test_adversarial_gold_product gerado e materializado no
+    Databricks Unity Catalog.
+  synonyms:
+  - test_adversarial_gold_product
+  - test adversarial gold product
+  dimensions:
+  - name: id
+    type: string
+    column: id
+    description: Coluna id do data product test_adversarial_gold_product
+  - name: total_amount
+    type: double
+    column: total_amount
+    description: Coluna total_amount do data product test_adversarial_gold_product
+  metrics:
+  - name: total_test_adversarial_gold_product_records
+    type: count
+    sql: COUNT(*)
+    description: Contagem total de registros em test_adversarial_gold_product
+  - name: total_total_amount
+    type: sum
+    sql: SUM(total_amount)
+    description: Soma agregada de total_amount
+  - name: avg_total_amount
+    type: avg
+    sql: AVG(total_amount)
+    description: Média de total_amount
+  relationships:
+  - name: customers_to_test_adversarial_gold_product
+    from_entity: customers
+    from_column: customer_id
+    to_entity: test_adversarial_gold_product
+    to_column: customer_id
+    type: many_to_one
 relationships:
 - from_entity: medallion_bronze_transactions
   to_entity: medallion_silver_transactions

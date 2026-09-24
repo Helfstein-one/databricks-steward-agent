@@ -40,7 +40,7 @@ def test_preview_table_data_formatting():
         "row_count": 2,
     }
 
-    with patch("src.databricks.client.DatabricksCEClient", return_value=mock_db):
+    with patch("src.adapters.databricks_adapter.DatabricksCEClient", return_value=mock_db):
         res = preview_table_data(
             table_name="workspace.default.medallion_silver_transactions",
             limit=2,
@@ -207,7 +207,7 @@ def test_deploy_and_materialize_data_product_success(tmp_path):
     with (
         patch("src.ci.runner.run_ci_pipeline", return_value=mock_ci),
         patch("src.gitops.git_client.GitClient", return_value=mock_git),
-        patch("src.databricks.client.DatabricksCEClient", return_value=mock_db),
+        patch("src.adapters.databricks_adapter.DatabricksCEClient", return_value=mock_db),
         patch("src.semantic.registry.SemanticRegistry", return_value=mock_registry),
         patch("src.visualizer.mermaid.generate_er_diagram", return_value="erDiagram"),
     ):

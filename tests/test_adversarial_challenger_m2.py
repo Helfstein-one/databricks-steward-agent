@@ -1,3 +1,5 @@
+from __future__ import annotations
+from src.agent.graph import steward_node
 """Empirical Challenger M2 Adversarial Test Suite.
 
 Stress-tests:
@@ -6,7 +8,6 @@ Stress-tests:
 3. End-to-end journey resilience, parsing, and failure mode behavior
 """
 
-from __future__ import annotations
 
 import re
 from unittest.mock import MagicMock, patch
@@ -15,10 +16,10 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from open_webui_pipe import Pipe
-from src.agent.graph import (
+from src.agent.intent import (
     _is_confirmation,
     _resolve_anaphoric_entity,
-    steward_node,
+    
 )
 from src.agent.state import AgentState
 

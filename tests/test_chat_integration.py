@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
 from open_webui_pipe import Pipe
-from src.agent.graph import _synthesize_conversational_response
+from src.agent.intent import _synthesize_conversational_response
 from src.application.intent_router import (
     classify_intent_with_llm,
     is_confirmation,

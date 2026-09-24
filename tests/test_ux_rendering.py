@@ -1,7 +1,7 @@
 import time
 from unittest.mock import MagicMock, patch
 
-from src.agent.graph import _deterministic_steward_execution
+from src.agent.graph import steward_node
 from src.config import settings
 from src.databricks.introspector import introspect_catalog
 from src.semantic.registry import SemanticRegistry
@@ -64,8 +64,8 @@ def test_introspect_catalog_mock(mock_client_class, mock_is_configured):
         assert entities[0].name == "bronze_raw_transactions"
 
 # 3. LATENCY TEST
-def test_deterministic_steward_execution_latency():
-    """Call _deterministic_steward_execution(state) and assert elapsed time < 2.0 seconds."""
+def teststeward_node_latency():
+    """Call steward_node(state) and assert elapsed time < 2.0 seconds."""
     state = {
         "user_query": "1",
         "generated_code": None,
@@ -75,7 +75,7 @@ def test_deterministic_steward_execution_latency():
     }
     
     start_time = time.time()
-    result = _deterministic_steward_execution(state)
+    result = steward_node(state)
     end_time = time.time()
     
     elapsed_time = end_time - start_time
