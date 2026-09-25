@@ -1,16 +1,15 @@
-
 from typing import Any
+
 from langchain_core.messages import AIMessage
+
 from src.agent.state import AgentState
-from src.semantic.registry import SemanticRegistry
-from src.config import settings
 from src.ci.runner import run_ci_pipeline
-from src.agent.intent import _extract_query_text
+from src.config import settings
+from src.semantic.registry import SemanticRegistry
+
 
 class CIQualityGateUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
-        messages = state.get("messages", [])
-        
         active_diagram = state.get("active_diagram")
         generated_code = state.get("generated_code")
         ci_report = state.get("ci_report")

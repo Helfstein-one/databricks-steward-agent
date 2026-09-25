@@ -16,7 +16,7 @@ def execute_query(query: str) -> list[dict[str, Any]]:
             return [res]
         raw_res = res.get("result") if isinstance(res, dict) else None
         return getattr(raw_res, "data_array", []) if raw_res else []
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return [{"error": f"❌ Erro ao consultar Databricks: {e}"}]
 
 
@@ -26,12 +26,13 @@ def preview_table_data(table_name: str, limit: int = 10) -> str:
         if isinstance(res, dict) and "error" in res:
             return str(res["error"])
         return str(res.get("markdown_table", "")) if isinstance(res, dict) else str(res)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return f"❌ Erro ao consultar Databricks: {e}"
 
 
 def inspect_unity_catalog_local(catalog: str | None = None, schema: str | None = None) -> str:
     from src.config import settings
+
     client = DatabricksCEClient()
     cat_to_use = catalog or settings.databricks_default_catalog or "workspace"
     sch_to_use = schema or settings.databricks_default_schema or "default"
@@ -108,7 +109,7 @@ def deploy_and_materialize_data_product_local(
         preview = db_client.preview_table_data(table_name=table_name, limit=1)
         for c in preview.get("columns", []):
             inferred_cols.append({"name": c, "type": "string"})
-    except Exception as err:
+    except Exception as err:  # noqa: BLE001
         logger.debug("Preview inference notice: %s", err)
 
     if not inferred_cols:
@@ -121,7 +122,8 @@ def deploy_and_materialize_data_product_local(
     ent_model = reg.register_data_product_entity(
         entity_name=product_slug.replace("-", "_"),
         table_name=table_name,
-        columns=inferred_cols or [{"name": "id", "type": "string"}, {"name": "total_amount", "type": "double"}],
+        columns=inferred_cols
+        or [{"name": "id", "type": "string"}, {"name": "total_amount", "type": "double"}],
         source_entity=source_entity,
         models_dir=settings.semantic_models_path,
     )
@@ -160,13 +162,13 @@ class DatabricksAdapter(IDatabricksAdapter):
                 f"{md_table}\n\n"
                 f"💡 *Dica: Para gerar um pipeline ETL a partir desta tabela, peça: 'propor etl a partir de {table_name}'.*"
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return f"❌ Erro ao consultar Databricks: {e}"
 
     def inspect_schema(self, catalog: str | None = None, schema: str | None = None) -> str:
         try:
             return inspect_unity_catalog_local(catalog=catalog, schema=schema)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return f"❌ Erro ao consultar Databricks: {e}"
 
     def deploy_job(
@@ -183,6 +185,5 @@ class DatabricksAdapter(IDatabricksAdapter):
                 sparksql_code,
                 source_entity=source_entity,
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"status": "error", "error": f"❌ Erro ao consultar Databricks: {e}"}
-

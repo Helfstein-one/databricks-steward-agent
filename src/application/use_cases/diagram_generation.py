@@ -1,11 +1,13 @@
-
 from typing import Any
+
 from langchain_core.messages import AIMessage
-from src.agent.state import AgentState
-from src.semantic.registry import SemanticRegistry
-from src.config import settings
-from src.agent.tools import generate_diagram
+
 from src.agent.intent import _extract_entity_from_query, _extract_query_text
+from src.agent.state import AgentState
+from src.agent.tools import generate_diagram
+from src.config import settings
+from src.semantic.registry import SemanticRegistry
+
 
 class DiagramGenerationUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:

@@ -7,29 +7,20 @@ import logging
 import os
 import re
 import sys
-import time
 import urllib.request
 from typing import Any
 
 from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from langgraph.graph import END, START, StateGraph
 
 from src.agent.state import AgentState
 from src.agent.tools import (
     ENTITY_ALIAS_MAP,
-    format_entity_modeling,
-    generate_diagram,
-    generate_etl_pipeline,
     get_langchain_tools,
-    inspect_unity_catalog,
-    load_semantic_models,
 )
-from src.ci.runner import run_ci_pipeline
 from src.config import settings
 from src.etl.generator import generate_medallion_pipeline
-from src.gitops.github_pr import create_data_product_pr
 from src.semantic.registry import SemanticRegistry
 
 logger = logging.getLogger(__name__)
@@ -628,6 +619,47 @@ def _is_entity_modeling_query(query: str) -> bool:
     return any(k in q for k in modeling_keywords)
 
 
+def _is_diagram_query(q_l: str, intent: str | None = None) -> bool:
+    diag_kw = (
+        "diagram",
+        "diagrama",
+        "erd",
+        "mermaid",
+        "lineage",
+        "fluxo",
+        "desenhar",
+        "relacoes",
+        "relações",
+        "relacionamento",
+        "relacionamentos",
+        "como estão relacionadas",
+    )
+    return intent == "DIAGRAM" or any(k in q_l for k in diag_kw)
+
+
+def _is_schema_query(q_l: str, intent: str | None = None) -> bool:
+    cat_kw = ("catalog", "catálogo", "schema", "tabelas")
+    return intent == "SCHEMA" or any(k in q_l for k in cat_kw)
+
+
+def _is_semantic_query(q_l: str) -> bool:
+    sem_kw = ("semantic", "semântica", "semantica", "metrica", "dimensao", "ontology")
+    return any(k in q_l for k in sem_kw)
+
+
+def _is_etl_query(q_l: str, intent: str | None = None) -> bool:
+    etl_kw = ("etl", "pipeline", "pyspark", "sparksql", "bronze", "silver", "gold")
+    return intent == "ETL" or any(k in q_l for k in etl_kw)
+
+
+def _is_ci_query(q_l: str) -> bool:
+    ci_kw = ("ci", "esteira", "lint", "ruff", "sqlfluff", "anti-pattern", "validar")
+    return any(k in q_l for k in ci_kw)
+
+
+def _is_gitops_query(q_l: str) -> bool:
+    git_kw = ("pr", "gitops", "branch", "commit", "push")
+    return any(k in q_l for k in git_kw)
 
 
 def _synthesize_conversational_response(
@@ -682,13 +714,11 @@ def _synthesize_conversational_response(
     return det_result
 
 
-
-
-
 def handle_llm_greeting(state, client, query):
-    from langchain_core.messages import AIMessage
     import json
-    import time
+
+    from langchain_core.messages import AIMessage
+
     try:
         system_prompt = (
             "Você é o Databricks Steward Agent, assistente especializado em governança e engenharia de dados Lakehouse. "
@@ -702,54 +732,64 @@ def handle_llm_greeting(state, client, query):
             "6. GitOps: automação de branch, commit e Pull Requests no GitHub\\n"
             "Oriente o usuário a escolher um número (1 a 6) ou descrever sua necessidade."
         )
-        llm_res = client.invoke([{"role": "system", "content": system_prompt}, {"role": "user", "content": query or "olá"}])
+        llm_res = client.invoke(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": query or "olá"},
+            ]
+        )
         reply = str(llm_res.content or "").strip()
         if reply.startswith("{") and reply.endswith("}"):
             try:
                 p = json.loads(reply)
                 if isinstance(p, dict) and "parameters" in p and "message" in p["parameters"]:
                     reply = str(p["parameters"]["message"])
-            except Exception: pass
+            except Exception:  # noqa: BLE001, S110
+                pass
         if reply:
             return {**state, "messages": [AIMessage(content=reply)], "response": reply}
-    except Exception:
+    except Exception:  # noqa: BLE001, S110
         pass
     return None
 
+
 def handle_llm_conceptual(state, client, query):
     from langchain_core.messages import AIMessage
+
     try:
         system_prompt = (
             "Você é o Databricks Steward Agent, um especialista em governança e engenharia de dados Lakehouse no Databricks. "
             "Responda de forma didática, completa, estruturada em tópicos e profissional em português. "
             "Destaque o conceito, seus benefícios, como funciona no Databricks e sugira como o usuário pode explorar essa capacidade."
         )
-        llm_res = client.invoke([{"role": "system", "content": system_prompt}, {"role": "user", "content": query}])
+        llm_res = client.invoke(
+            [{"role": "system", "content": system_prompt}, {"role": "user", "content": query}]
+        )
         reply = str(llm_res.content or "").strip()
         if reply:
             return {**state, "messages": [AIMessage(content=reply)], "response": reply}
-    except Exception:
+    except Exception:  # noqa: BLE001, S110
         pass
     return None
 
+
 def execute_llm_tool_calling(state, client, query):
-    from src.agent.tools import get_langchain_tools
-    from src.etl.generator import generate_medallion_pipeline
-    from src.semantic.registry import SemanticRegistry
-    from src.config import settings
-    from langchain_core.messages import AIMessage
-    import re
     import json
-    
+    import re
+
+    from langchain_core.messages import AIMessage
+
+    from src.config import settings
+
     try:
         tools = get_langchain_tools()
         llm_with_tools = client.bind_tools(tools)
         messages = [{"role": "user", "content": query}] if query else state.get("messages", [])
         response = llm_with_tools.invoke(messages)
-        
+
         active_diagram = state.get("active_diagram")
         generated_code = state.get("generated_code")
-        
+
         if hasattr(response, "tool_calls") and response.tool_calls:
             tool_dict = {t.name: t for t in tools}
             results = []
@@ -779,8 +819,14 @@ def execute_llm_tool_calling(state, client, query):
                                 "layer": pipe.layer,
                             }
             combined_resp = "\n\n".join(results)
-            return {**state, "messages": [AIMessage(content=combined_resp)], "response": combined_resp, "active_diagram": active_diagram, "generated_code": generated_code}
-        
+            return {
+                **state,
+                "messages": [AIMessage(content=combined_resp)],
+                "response": combined_resp,
+                "active_diagram": active_diagram,
+                "generated_code": generated_code,
+            }
+
         if response.content:
             content_str = str(response.content).strip()
             if content_str.startswith("{") and content_str.endswith("}"):
@@ -788,9 +834,9 @@ def execute_llm_tool_calling(state, client, query):
                     p = json.loads(content_str)
                     if isinstance(p, dict) and "parameters" in p and "message" in p["parameters"]:
                         content_str = str(p["parameters"]["message"])
-                except Exception: pass
+                except Exception:  # noqa: BLE001, S110
+                    pass
             return {**state, "messages": [response], "response": content_str}
-    except Exception:
+    except Exception:  # noqa: BLE001, S110
         pass
     return None
-

@@ -24,7 +24,7 @@ def open_pull_request(
             dry_run=True,
         )
         return res.model_dump() if hasattr(res, "model_dump") else res.__dict__
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return {"status": "error", "error": f"❌ Erro GitOps: {e}"}
 
 

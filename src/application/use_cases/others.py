@@ -1,23 +1,36 @@
-
 import re
 from typing import Any
+
 from langchain_core.messages import AIMessage
+
+from src.agent.intent import (
+    _extract_entity_from_query,
+    _extract_table_or_entity,
+    _get_conceptual_explanation,
+)
 from src.agent.state import AgentState
-from src.agent.tools import preview_table_data, format_entity_modeling, inspect_unity_catalog, load_semantic_models
-from src.semantic.registry import SemanticRegistry
+from src.agent.tools import (
+    format_entity_modeling,
+    inspect_unity_catalog,
+    load_semantic_models,
+    preview_table_data,
+)
 from src.config import settings
-from src.agent.intent import _extract_table_or_entity, _extract_entity_from_query, _get_conceptual_explanation
+from src.semantic.registry import SemanticRegistry
+
 
 class TitleUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
         resp = "Databricks Steward - Governança"
         return {**state, "messages": [AIMessage(content=resp)], "response": resp}
 
+
 class ConceptualExplanationUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
         user_query = state.get("user_query") or ""
         resp = _get_conceptual_explanation(user_query) or "Conceito não encontrado."
         return {**state, "messages": [AIMessage(content=resp)], "response": resp}
+
 
 class DataPreviewUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
@@ -26,7 +39,13 @@ class DataPreviewUseCase:
         lim_match = re.search(r"\blimit\s+(\d+)\b", user_query.lower())
         limit_val = int(lim_match.group(1)) if lim_match else 10
         response_text = preview_table_data(table_name=target_table, limit=limit_val)
-        return {**state, "messages": [AIMessage(content=response_text)], "response": response_text, "preview_data": {"table_name": target_table, "limit": limit_val}}
+        return {
+            **state,
+            "messages": [AIMessage(content=response_text)],
+            "response": response_text,
+            "preview_data": {"table_name": target_table, "limit": limit_val},
+        }
+
 
 class EntityModelingUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
@@ -35,12 +54,19 @@ class EntityModelingUseCase:
         resp = format_entity_modeling(ent_name)
         m_match = re.search(r"```mermaid\n(.*?)\n```", resp, re.DOTALL)
         diag = f"```mermaid\n{m_match.group(1)}\n```" if m_match else state.get("active_diagram")
-        return {**state, "messages": [AIMessage(content=resp)], "response": resp, "active_diagram": diag}
+        return {
+            **state,
+            "messages": [AIMessage(content=resp)],
+            "response": resp,
+            "active_diagram": diag,
+        }
+
 
 class UnityCatalogUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
         response_text = inspect_unity_catalog()
         return {**state, "messages": [AIMessage(content=response_text)], "response": response_text}
+
 
 class SemanticLayerUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
@@ -60,6 +86,7 @@ class SemanticLayerUseCase:
         )
         return {**state, "messages": [AIMessage(content=response_text)], "response": response_text}
 
+
 class GreetingUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
         response_text = (
@@ -74,4 +101,3 @@ class GreetingUseCase:
             "💡 *Dica: Digite o número da opção (ex: `1`, `3`, `4`) ou descreva sua solicitação em linguagem natural!*"
         )
         return {**state, "messages": [AIMessage(content=response_text)], "response": response_text}
-

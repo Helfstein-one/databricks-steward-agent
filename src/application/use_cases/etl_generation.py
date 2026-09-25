@@ -1,13 +1,18 @@
-
-import re
 from typing import Any
+
 from langchain_core.messages import AIMessage
+
+from src.agent.intent import (
+    _extract_entity_from_query,
+    _extract_query_text,
+    _resolve_anaphoric_entity,
+)
 from src.agent.state import AgentState
-from src.semantic.registry import SemanticRegistry
+from src.agent.tools import generate_etl_pipeline
 from src.config import settings
 from src.etl.generator import generate_medallion_pipeline
-from src.agent.tools import generate_etl_pipeline
-from src.agent.intent import _extract_entity_from_query, _resolve_anaphoric_entity, _extract_query_text
+from src.semantic.registry import SemanticRegistry
+
 
 class ETLGenerationUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
@@ -54,6 +59,7 @@ class ETLGenerationUseCase:
         ent_obj = reg.get_entity(entity_name)
         if not ent_obj:
             from src.databricks.introspector import _build_mock_entities
+
             mock_ents = {e.name: e for e in _build_mock_entities()}
             ent_obj = mock_ents.get(entity_name)
 

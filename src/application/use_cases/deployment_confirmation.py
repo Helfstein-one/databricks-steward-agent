@@ -1,17 +1,19 @@
-
 from typing import Any
+
 from langchain_core.messages import AIMessage
+
+from src.agent.intent import _extract_pending_from_history
 from src.agent.state import AgentState
 from src.agent.tools import deploy_and_materialize_data_product
-from src.agent.intent import _extract_pending_from_history, _extract_query_text
+
 
 class DeploymentConfirmationUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
         messages = state.get("messages", [])
-        
+
         generated_code = state.get("generated_code")
         gitops_result = state.get("gitops_result")
-        
+
         pending = state.get("pending_pipeline") or _extract_pending_from_history(messages)
         prod_name = pending.get("product_name", "medallion_gold_sales_kpis")
         p_py = pending.get("pyspark", "")

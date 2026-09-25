@@ -1,18 +1,17 @@
-
 import re
 from typing import Any
+
 from langchain_core.messages import AIMessage
+
 from src.agent.state import AgentState
-from src.semantic.registry import SemanticRegistry
-from src.config import settings
 from src.ci.runner import run_ci_pipeline
+from src.config import settings
 from src.gitops.github_pr import create_data_product_pr
-from src.agent.intent import _extract_query_text
+from src.semantic.registry import SemanticRegistry
+
 
 class GitOpsPRUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
-        messages = state.get("messages", [])
-        
         active_diagram = state.get("active_diagram")
         generated_code = state.get("generated_code")
         ci_report = state.get("ci_report")
