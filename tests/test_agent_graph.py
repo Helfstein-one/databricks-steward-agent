@@ -77,15 +77,31 @@ def test_steward_node_routing_catalog():
 
 
 def test_steward_node_routing_etl():
-    """Verify user query asking for ETL pipeline generates PySpark and SparkSQL."""
-    state: AgentState = {
+    """Verify user query asking for ETL pipeline generates low-code Mermaid proposal (Step 1), and confirmation generates code (Step 2)."""
+    # Step 1: Proposal
+    state1: AgentState = {
         "messages": [{"role": "user", "content": "Gerar pipeline ETL silver para transactions"}],
         "user_query": "Gerar pipeline ETL silver para transactions",
     }
-    output = steward_node(state)
-    assert "PySpark Pipeline" in output["response"]
-    assert "SparkSQL DDL" in output["response"]
-    assert "run_silver_pipeline" in output["response"]
+    output1 = steward_node(state1)
+    assert "Proposta Visual de Pipeline ETL" in output1["response"]
+    assert "flowchart LR" in output1["response"]
+    assert output1.get("pending_pipeline") is not None
+
+    # Step 2: Confirmation
+    state2: AgentState = {
+        "messages": [
+            {"role": "user", "content": "Gerar pipeline ETL silver para transactions"},
+            {"role": "assistant", "content": output1["response"]},
+            {"role": "user", "content": "sim"},
+        ],
+        "user_query": "sim",
+        "pending_pipeline": output1["pending_pipeline"],
+    }
+    output2 = steward_node(state2)
+    assert "PySpark Pipeline" in output2["response"]
+    assert "SparkSQL DDL" in output2["response"]
+    assert "run_silver_pipeline" in output2["response"]
 
 
 def test_steward_node_routing_ci():
@@ -181,7 +197,8 @@ def test_steward_node_numeric_menu_shortcuts():
 
     # Option 4: ETL Pipeline
     out4 = steward_node({"messages": [{"role": "user", "content": "4"}], "user_query": "4"})
-    assert "PySpark Pipeline" in out4["response"]
+    assert "Proposta Visual de Pipeline ETL" in out4["response"]
+    assert "flowchart LR" in out4["response"]
 
     # Option 5: CI Quality Gate
     out5 = steward_node({"messages": [{"role": "user", "content": "5"}], "user_query": "5"})

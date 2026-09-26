@@ -97,16 +97,16 @@ def test_turn2_gold_anaphora_resolution(turn2_query: str, expected_resolved: str
         f"Failed resolving anaphora for '{turn2_query}': got '{resolved}'"
     )
 
-    # Test full graph execution
+    # Test full graph execution (Turn 2 returns low-code Mermaid ETL flowchart proposal)
     graph = create_steward_graph()
     res = graph.invoke({"messages": messages})
 
     resp = res.get("response", "")
-    assert "```python" in resp and ("def " in resp or "process" in resp), (
-        f"Graph did not generate PySpark code for '{turn2_query}'. Response: {resp[:200]}"
+    assert "Proposta Visual de Pipeline ETL" in resp, (
+        f"Graph did not return visual ETL proposal for '{turn2_query}'. Response: {resp[:200]}"
     )
-    assert "```sql" in resp and "CREATE " in resp, (
-        f"Graph did not generate SparkSQL DDL for '{turn2_query}'. Response: {resp[:200]}"
+    assert "flowchart LR" in resp, (
+        f"Graph did not generate Mermaid flowchart LR for '{turn2_query}'. Response: {resp[:200]}"
     )
     assert res.get("pending_pipeline") is not None, f"pending_pipeline is None for '{turn2_query}'"
 
@@ -196,7 +196,7 @@ def test_pipe_3_turn_journey() -> None:
     assert isinstance(resp1, str)
     assert "Amostra de Dados" in resp1 or "customers" in resp1, f"Turn 1 failed: {resp1[:200]}"
 
-    # Turn 2: ETL Proposal
+    # Turn 2: ETL Proposal (Visual Low-Code Mermaid)
     body2 = {
         "messages": [
             {"role": "user", "content": "consulte os dados da tabela customers"},
@@ -208,7 +208,7 @@ def test_pipe_3_turn_journey() -> None:
     resp2 = pipe.pipe(body2)
     assert isinstance(resp2, str)
     assert (
-        "PySpark" in resp2 or "CREATE OR REPLACE TABLE" in resp2 or "Medallion Pipeline" in resp2
+        "Proposta Visual de Pipeline ETL" in resp2 or "flowchart LR" in resp2
     ), f"Turn 2 failed: {resp2[:200]}"
 
     # Turn 3: Confirmation

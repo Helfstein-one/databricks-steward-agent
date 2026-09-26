@@ -331,13 +331,12 @@ def test_open_webui_pipe_multi_turn_state_preservation() -> None:
     assert len(resp1) > 0
     messages.append({"role": "assistant", "content": resp1})
 
-    # Turn 2
+    # Turn 2: Proposal
     messages.append({"role": "user", "content": "propor um etl gold a partir dessa tabela"})
     resp2 = pipe.pipe({"messages": messages, "stream": False})
     assert isinstance(resp2, str)
     assert "medallion_gold_customer_kpis" in resp2
-    assert "```python" in resp2
-    assert "```sql" in resp2
+    assert "flowchart LR" in resp2
     messages.append({"role": "assistant", "content": resp2})
 
     # Turn 2.5: User rejects / cancels
