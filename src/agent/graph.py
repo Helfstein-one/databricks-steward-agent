@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from src.agent.intent import (
     _classify_intent_with_llm,
     _extract_query_text,
+    _is_analytics_query,
     _is_ci_query,
     _is_conceptual_question,
     _is_confirmation,
@@ -48,6 +49,8 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
         return uc.TitleUseCase().execute(state)
     if _is_confirmation(query) or intent == "CONFIRM":
         return uc.DeploymentConfirmationUseCase().execute(state)
+    if _is_analytics_query(query) or intent == "ANALYTICS":
+        return uc.AnalyticsUseCase().execute(state)
     if _is_data_preview_query(query) or intent == "PREVIEW":
         return uc.DataPreviewUseCase().execute(state)
     if _is_entity_modeling_query(query):

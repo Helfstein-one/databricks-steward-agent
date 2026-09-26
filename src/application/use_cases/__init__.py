@@ -6,6 +6,7 @@ from src.application.use_cases.diagram_generation import DiagramGenerationUseCas
 from src.application.use_cases.etl_generation import ETLGenerationUseCase
 from src.application.use_cases.gitops_pr import GitOpsPRUseCase
 from src.application.use_cases.others import (
+    AnalyticsUseCase,
     ConceptualExplanationUseCase,
     DataPreviewUseCase,
     EntityModelingUseCase,
@@ -16,6 +17,7 @@ from src.application.use_cases.others import (
 )
 
 __all__ = [
+    "AnalyticsUseCase",
     "CIQualityGateUseCase",
     "ConceptualExplanationUseCase",
     "DataPreviewUseCase",
