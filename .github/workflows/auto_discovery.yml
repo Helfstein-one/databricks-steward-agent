@@ -1,0 +1,51 @@
+name: Semantic Auto-Discovery Crawler
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # Run daily at 3 AM UTC
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install poetry
+          poetry install --no-interaction --no-root
+
+      - name: Run Auto-Discovery Crawler
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_WAREHOUSE_ID: ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
+          LOCAL_LLM_API_KEY: ${{ secrets.LOCAL_LLM_API_KEY }}
+          LOCAL_LLM_BASE_URL: ${{ secrets.LOCAL_LLM_BASE_URL }}
+        run: |
+          poetry run python -m src.cli.discovery --catalog default --schema default
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(semantic): auto-update semantic models from Unity Catalog"
+          title: "🤖 Auto-Discovery: Semantic Models Update"
+          body: |
+            ## Semantic Layer Update
+            The LLM-Enriched Semantic Crawler has successfully introspected the Databricks Unity Catalog and updated the YAML models.
+            Please review the inferred metrics, dimensions, and business descriptions before merging.
+          branch: bot/auto-discovery-update
+          labels: "documentation, enhancement"
