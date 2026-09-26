@@ -2,7 +2,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage
 
-from src.agent.intent import _extract_table_or_entity
+from src.agent.parsers import _extract_table_or_entity, _resolve_anaphoric_entity
 from src.agent.state import AgentState
 from src.config import settings
 from src.semantic.models import EntityModel
@@ -13,10 +13,12 @@ from src.visualizer.mermaid import generate_etl_flowchart
 class ETLGenerationUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
         messages = state.get("messages", [])
-        user_query = messages[-1].get("content", "") if messages and isinstance(messages[-1], dict) else getattr(messages[-1], "content", "") if messages else state.get("user_query", "")
+        user_query = state.get("user_query") or (messages[-1].get("content", "") if messages and isinstance(messages[-1], dict) else getattr(messages[-1], "content", "") if messages else "")
         thread_id = state.get("thread_id", "default_thread")
 
-        entity_name = _extract_table_or_entity(user_query)
+        entity_name = _resolve_anaphoric_entity(user_query, messages, state)
+        if not entity_name:
+            entity_name = _extract_table_or_entity(user_query)
 
         layer = "silver"
         if "gold" in user_query.lower() or "business" in user_query.lower():
