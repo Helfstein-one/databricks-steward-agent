@@ -3,9 +3,11 @@
 from src.application.use_cases.ci_quality_gate import CIQualityGateUseCase
 from src.application.use_cases.deployment_confirmation import DeploymentConfirmationUseCase
 from src.application.use_cases.diagram_generation import DiagramGenerationUseCase
+from src.application.use_cases.error_correction import ErrorCorrectionUseCase
 from src.application.use_cases.etl_generation import ETLGenerationUseCase
 from src.application.use_cases.gitops_pr import GitOpsPRUseCase
 from src.application.use_cases.others import (
+    AnalyticsUseCase,
     ConceptualExplanationUseCase,
     DataPreviewUseCase,
     EntityModelingUseCase,
@@ -16,6 +18,7 @@ from src.application.use_cases.others import (
 )
 
 __all__ = [
+    "AnalyticsUseCase",
     "CIQualityGateUseCase",
     "ConceptualExplanationUseCase",
     "DataPreviewUseCase",
@@ -23,6 +26,7 @@ __all__ = [
     "DiagramGenerationUseCase",
     "ETLGenerationUseCase",
     "EntityModelingUseCase",
+    "ErrorCorrectionUseCase",
     "GitOpsPRUseCase",
     "GreetingUseCase",
     "SemanticLayerUseCase",

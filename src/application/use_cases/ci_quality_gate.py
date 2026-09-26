@@ -36,6 +36,19 @@ class CIQualityGateUseCase:
         ci_report = report
         response_text = report.summary_markdown or report.format_markdown()
 
+        is_failed = not report.is_approved
+        waiting_for_correction = bool(is_failed)
+        error_recovery = (
+            {
+                "source": "ci_quality_gate",
+                "logs": response_text,
+                "pyspark_code": py_code,
+                "sparksql_code": sql_code,
+            }
+            if is_failed
+            else None
+        )
+
         return {
             "messages": [AIMessage(content=response_text)],
             "response": response_text,
@@ -44,4 +57,6 @@ class CIQualityGateUseCase:
             "ci_report": ci_report,
             "gitops_result": gitops_result,
             "pending_pipeline": pending_pipeline,
+            "waiting_for_correction": waiting_for_correction,
+            "error_recovery": error_recovery,
         }

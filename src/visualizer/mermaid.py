@@ -201,3 +201,95 @@ def generate_lineage_diagram(entities: list[EntityModel]) -> str:
                 )
 
     return "\n".join(lines)
+
+
+def generate_etl_flowchart(
+    entity: EntityModel,
+    layer: str,
+    source_table_or_path: str | None = None,
+) -> str:
+    """Generate a Mermaid flowchart (flowchart LR) showing source tables -> transformations -> target table.
+
+    Args:
+        entity: EntityModel specifying table name, columns, dimensions, and metrics.
+        layer: Medallion layer ('bronze', 'silver', 'gold').
+        source_table_or_path: Optional custom source table name or raw ingestion path.
+
+    Returns:
+        Formatted Mermaid flowchart LR code string.
+    """
+    layer_norm = (layer or "silver").strip().lower()
+    table_name = entity.table_name or entity.name
+    ent_name = entity.name
+    pk = entity.primary_key
+
+    lines: list[str] = ["flowchart LR"]
+
+    if layer_norm == "bronze":
+        src_path = source_table_or_path or f"/mnt/raw/{ent_name}"
+        lines.append('    subgraph Source ["📦 Origem de Dados (Landing Zone)"]')
+        lines.append(f'        src["{src_path}"]')
+        lines.append("    end")
+        lines.append('    subgraph Transformations ["⚡ Transformações Bronze"]')
+        lines.append('        t1["Audit Metadata (_ingested_at, _source_file)"]')
+        lines.append('        t2["Schema Enforcement & COPY INTO"]')
+        lines.append("    end")
+        lines.append('    subgraph Target ["🥉 Tabela Destino Delta (Bronze Layer)"]')
+        lines.append(f'        target["{table_name}"]')
+        lines.append("    end")
+        lines.append("    src --> t1 --> t2 --> target")
+
+    elif layer_norm == "silver":
+        src_table = source_table_or_path or f"bronze_{ent_name}"
+        lines.append('    subgraph Source ["🥉 Tabela Origem (Bronze Layer)"]')
+        lines.append(f'        src["{src_table}"]')
+        lines.append("    end")
+        lines.append('    subgraph Transformations ["⚡ Transformações Silver"]')
+        lines.append('        t1["Explicit Type Casting"]')
+        if pk:
+            lines.append(f'        t2["Deduplication on PK: {pk}"]')
+            lines.append(f'        t3["Filter Null Key: {pk} IS NOT NULL"]')
+            lines.append("    end")
+            lines.append('    subgraph Target ["🥈 Tabela Destino Delta (Silver Layer)"]')
+            lines.append(f'        target["{table_name}"]')
+            lines.append("    end")
+            lines.append("    src --> t1 --> t2 --> t3 --> target")
+        else:
+            lines.append("    end")
+            lines.append('    subgraph Target ["🥈 Tabela Destino Delta (Silver Layer)"]')
+            lines.append(f'        target["{table_name}"]')
+            lines.append("    end")
+            lines.append("    src --> t1 --> target")
+
+    elif layer_norm == "gold":
+        src_table = source_table_or_path or f"silver_{ent_name}"
+        dims = [d.column or d.name for d in entity.dimensions] if entity.dimensions else ["id"]
+        dims_str = ", ".join(dims[:3])
+        metrics = [m.name for m in entity.metrics] if entity.metrics else ["record_count"]
+        metrics_str = ", ".join(metrics[:3])
+
+        lines.append('    subgraph Source ["🥈 Tabela Origem (Silver Layer)"]')
+        lines.append(f'        src["{src_table}"]')
+        lines.append("    end")
+        lines.append('    subgraph Transformations ["⚡ Transformações Gold"]')
+        lines.append(f'        t1["Group By Dimensions: {dims_str}"]')
+        lines.append(f'        t2["Aggregate Business KPIs: {metrics_str}"]')
+        lines.append("    end")
+        lines.append('    subgraph Target ["🥇 Tabela Destino Delta (Gold Layer)"]')
+        lines.append(f'        target["{table_name}"]')
+        lines.append("    end")
+        lines.append("    src --> t1 --> t2 --> target")
+
+    else:
+        lines.append('    subgraph Source ["Tabela Origem"]')
+        lines.append(f'        src["{source_table_or_path or ent_name}"]')
+        lines.append("    end")
+        lines.append('    subgraph Transformations ["Transformações ETL"]')
+        lines.append('        t1["Processamento e Carga"]')
+        lines.append("    end")
+        lines.append('    subgraph Target ["Tabela Destino"]')
+        lines.append(f'        target["{table_name}"]')
+        lines.append("    end")
+        lines.append("    src --> t1 --> target")
+
+    return "\n".join(lines)

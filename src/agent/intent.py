@@ -233,6 +233,29 @@ def _is_data_preview_query(query: str) -> bool:
     return any(re.search(p, q) for p in patterns)
 
 
+def _is_analytics_query(query: str) -> bool:
+    """Check if query is asking a natural language business or metric analytics question."""
+    q = (query or "").strip().lower()
+    if not q:
+        return False
+
+    if _is_data_preview_query(q) or _is_conceptual_question(q):
+        return False
+
+    analytics_keywords = [
+        r"\b(faturamento|receita|revenue|sales_revenue|gross_revenue|net_revenue)\b",
+        r"\b(ticket\s+m[eé]dio|aov|average\s+order\s+value)\b",
+        r"\b(total\s+de\s+(vendas|pedidos|transa[çc][õo]es|clientes|compras))\b",
+        r"\b(quantos?\s+(pedidos|clientes|transa[çc][õo]es|vendas))\b",
+        r"\b(clientes?\s+vip)\b",
+        r"\b(quanto\s+(vendemos|faturamos|ganhamos))\b",
+        r"\b(m[eé]tricas?\s+de\s+(vendas|neg[oó]cio))\b",
+        r"\b(what\s+was\s+(the\s+)?total\s+revenue)\b",
+        r"\b(total\s+revenue|total\s+orders)\b",
+    ]
+    return any(re.search(p, q) for p in analytics_keywords)
+
+
 def _classify_intent_with_llm(query: str, llm: ChatOpenAI) -> str:
     """Uses the LLM to classify the user intent when strict Regex fails. Extremely reliable for small local models."""
     q = (query or "").strip()
@@ -244,6 +267,8 @@ def _classify_intent_with_llm(query: str, llm: ChatOpenAI) -> str:
         return "CONFIRM"
     if _is_data_preview_query(query):
         return "PREVIEW"
+    if _is_analytics_query(query):
+        return "ANALYTICS"
 
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -252,6 +277,7 @@ def _classify_intent_with_llm(query: str, llm: ChatOpenAI) -> str:
                 """You are a smart semantic router for a Databricks AI Assistant. Analyze the user query and classify it strictly into ONE of the following tags. Output ONLY the exact tag in uppercase.
 
 Tags:
+- ANALYTICS: The user asks a natural language business, metric, or analytics question (e.g. 'what was total revenue', 'qual o faturamento total', 'faturamento por canal', 'total de vendas').
 - PREVIEW: The user wants YOU to show, select, or pull data/rows from a table.
 - SCHEMA: The user wants YOU to list available tables, catalogs, or describe column schemas.
 - DIAGRAM: The user wants YOU to draw, model, or show an ER diagram, Mermaid diagram, or business entity structure.
@@ -270,7 +296,7 @@ Output exactly one tag:""",
         res = chain.invoke({"query": q})
         content = str(getattr(res, "content", "") or "").strip().upper()
         # Clean up possible markdown or extra words
-        for tag in ["PREVIEW", "SCHEMA", "DIAGRAM", "ETL", "CONFIRM", "GREETING", "OTHER"]:
+        for tag in ["ANALYTICS", "PREVIEW", "SCHEMA", "DIAGRAM", "ETL", "CONFIRM", "GREETING", "OTHER"]:
             if tag in content:
                 return tag
         return "OTHER"
@@ -557,6 +583,9 @@ def _is_entity_modeling_query(query: str) -> bool:
     if not q:
         return False
 
+    if _is_analytics_query(q):
+        return False
+
     # Avoid stealing queries meant for ETL generation, CI, GitOps, or pure Lineage diagrams
     if any(
         k in q
@@ -660,6 +689,18 @@ def _is_ci_query(q_l: str) -> bool:
 def _is_gitops_query(q_l: str) -> bool:
     git_kw = ("pr", "gitops", "branch", "commit", "push")
     return any(k in q_l for k in git_kw)
+
+
+def is_error_recovery_state(state: AgentState | dict[str, Any]) -> bool:
+    """Check if state holds a failed CI report, deployment error, or waiting_for_correction flag."""
+    if not state:
+        return False
+    if state.get("waiting_for_correction") is True:
+        return True
+    if state.get("error_recovery"):
+        return True
+    ci_rep = state.get("ci_report")
+    return bool(ci_rep is not None and hasattr(ci_rep, "is_approved") and not ci_rep.is_approved)
 
 
 def _synthesize_conversational_response(

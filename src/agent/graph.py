@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from src.agent.intent import (
     _classify_intent_with_llm,
     _extract_query_text,
+    _is_analytics_query,
     _is_ci_query,
     _is_conceptual_question,
     _is_confirmation,
@@ -25,6 +26,7 @@ from src.agent.intent import (
     get_local_chat_client,
     handle_llm_conceptual,
     handle_llm_greeting,
+    is_error_recovery_state,
 )
 from src.agent.state import AgentState
 from src.application import use_cases as uc
@@ -34,6 +36,9 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
     client = llm or get_local_chat_client()
     query = state.get("user_query") or _extract_query_text(state.get("messages", []))
     q_l = query.strip().lower()
+
+    if is_error_recovery_state(state):
+        return uc.ErrorCorrectionUseCase().execute(state, llm=client)
 
     intent = state.get("intent")
     is_test = bool(os.getenv("PYTEST_CURRENT_TEST"))
@@ -48,6 +53,8 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
         return uc.TitleUseCase().execute(state)
     if _is_confirmation(query) or intent == "CONFIRM":
         return uc.DeploymentConfirmationUseCase().execute(state)
+    if _is_analytics_query(query) or intent == "ANALYTICS":
+        return uc.AnalyticsUseCase().execute(state)
     if _is_data_preview_query(query) or intent == "PREVIEW":
         return uc.DataPreviewUseCase().execute(state)
     if _is_entity_modeling_query(query):
