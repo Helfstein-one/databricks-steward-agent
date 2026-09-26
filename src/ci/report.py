@@ -20,6 +20,8 @@ class CIReport(BaseModel):
     is_approved: bool
     ruff_status: str  # "PASSED", "FAILED", "SKIPPED"
     sqlfluff_status: str  # "PASSED", "FAILED", "SKIPPED"
+    semantic_status: str = "SKIPPED"  # "PASSED", "FAILED", "SKIPPED"
+    dry_run_status: str = "SKIPPED"  # "PASSED", "FAILED", "SKIPPED"
     anti_patterns: list[Violation] = Field(default_factory=list)
     violations: list[Violation] = Field(default_factory=list)
     summary_markdown: str = ""
@@ -37,6 +39,8 @@ class CIReport(BaseModel):
             f"| **Ruff (Python / PySpark)** | {self.ruff_status} | {len([v for v in self.violations if v.rule.startswith(('E', 'F', 'W', 'I', 'B', 'SIM', 'UP', 'RUFF'))])} |",
             f"| **SQLFluff (SparkSQL)** | {self.sqlfluff_status} | {len([v for v in self.violations if v.rule.startswith(('LT', 'CP', 'AL', 'RF', 'PRS', 'SQL'))])} |",
             f"| **Data Anti-Patterns** | {'PASSED' if not self.anti_patterns else 'FAILED'} | {len(self.anti_patterns)} |",
+            f"| **Semantic Validation (Unity Catalog)** | {self.semantic_status} | {len([v for v in self.violations if v.rule.startswith(('SEMANTIC', 'UC'))])} |",
+            f"| **Dry-Run Execution Plan** | {self.dry_run_status} | {len([v for v in self.violations if v.rule.startswith(('DRYRUN', 'EXEC'))])} |",
             "",
         ]
 

@@ -11,10 +11,7 @@ build/
 .agents/
 pipelines/
 pipeline.py
-<<<<<<< HEAD
 venv/
-=======
 ark/
->>>>>>> f21fdb3 (chore: remove ark submodule, ignore ark/ dir)
-ark/
-ark/
+chat_history.db
+*.db

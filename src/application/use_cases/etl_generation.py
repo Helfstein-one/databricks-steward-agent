@@ -2,11 +2,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage
 
-from src.agent.intent import (
-    _extract_entity_from_query,
-    _extract_query_text,
-    _resolve_anaphoric_entity,
-)
+from src.agent.intent import _extract_table_or_entity
 from src.agent.state import AgentState
 from src.config import settings
 from src.semantic.models import EntityModel
@@ -17,42 +13,23 @@ from src.visualizer.mermaid import generate_etl_flowchart
 class ETLGenerationUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
         messages = state.get("messages", [])
-        user_query = state.get("user_query") or _extract_query_text(messages)
-        q_lower = (user_query or "").strip().lower()
+        user_query = messages[-1].content if messages else ""
+        thread_id = state.get("thread_id", "default_thread")
 
-        generated_code = state.get("generated_code")
-        ci_report = state.get("ci_report")
-        gitops_result = state.get("gitops_result")
+        entity_name = _extract_table_or_entity(user_query)
 
-        layer = "gold" if "gold" in q_lower else "bronze" if "bronze" in q_lower else "silver"
+        layer = "silver"
+        if "gold" in user_query.lower() or "business" in user_query.lower():
+            layer = "gold"
+        elif "bronze" in user_query.lower():
+            layer = "bronze"
+
         reg = SemanticRegistry(settings.semantic_models_path)
-        has_medallion = reg.get_domain("databricks_medallion") is not None
-        ent = _extract_entity_from_query(user_query)
-        if not ent:
-            ent = _resolve_anaphoric_entity(user_query, messages, state)
-
-        if ent:
-            if (
-                has_medallion
-                and layer == "gold"
-                and ent in ("customers", "customer", "cliente", "clientes", "usuarios", "user")
-            ):
-                entity_name = "medallion_gold_customer_kpis"
-            else:
-                entity_name = ent
-        elif has_medallion:
-            if layer == "bronze":
-                entity_name = "medallion_bronze_transactions"
-            elif layer == "gold":
+        if not entity_name:
+            if layer == "gold":
                 entity_name = "medallion_gold_sales_kpis"
             else:
                 entity_name = "medallion_silver_transactions"
-        elif "sales" in q_lower or "order" in q_lower or "venda" in q_lower:
-            entity_name = "orders"
-        elif "transaction" in q_lower or "transac" in q_lower:
-            entity_name = "silver_transactions" if layer == "silver" else "bronze_raw_transactions"
-        else:
-            entity_name = "facilities"
 
         ent_obj = reg.get_entity(entity_name)
         if not ent_obj:
@@ -77,6 +54,23 @@ class ETLGenerationUseCase:
             "status": "proposed",
         }
 
+        # Save checkpoint of the proposal
+        try:
+            from src.agent.checkpoint import get_checkpoint_manager
+            chk_mgr = get_checkpoint_manager()
+            saved_chk = chk_mgr.save_checkpoint(
+                thread_id=thread_id,
+                entity_name=entity_name,
+                pyspark_code="",
+                sparksql_code="",
+                ci_status="PROPOSED",
+                metadata={"table_name": table_name, "layer": layer, "flowchart": flowchart_code},
+            )
+            chk_id = saved_chk.get("checkpoint_id", "")
+            chk_msg = f"\n💾 **Proposta v1 salva no banco de histórico conversacional (`{chk_id}`)**"
+        except ImportError:
+            chk_msg = ""
+
         confirmation_prompt = (
             "\n\n---\n"
             "❓ **Deseja aprovar esta proposta de ETL e gerar o código PySpark/SQL com validação de CI e deploy?**\n"
@@ -85,6 +79,7 @@ class ETLGenerationUseCase:
         response_text = (
             f"### 🎨 Proposta Visual de Pipeline ETL ({layer.upper()} Layer): {table_name}\n\n"
             f"{flowchart_md}"
+            f"{chk_msg}"
             f"{confirmation_prompt}"
         )
 
@@ -92,8 +87,5 @@ class ETLGenerationUseCase:
             "messages": [AIMessage(content=response_text)],
             "response": response_text,
             "active_diagram": flowchart_md,
-            "generated_code": generated_code,
-            "ci_report": ci_report,
-            "gitops_result": gitops_result,
             "pending_pipeline": pending_pipeline,
         }

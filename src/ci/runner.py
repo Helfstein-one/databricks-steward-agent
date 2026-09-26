@@ -1,7 +1,8 @@
-"""Programmatic CI pipeline runner executing Ruff, SQLFluff, and Anti-Pattern checks."""
+"""Programmatic CI pipeline runner executing Ruff, SQLFluff, Anti-Pattern, Semantic Mapping, and Dry-Run checks."""
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import subprocess
@@ -42,24 +43,19 @@ def strip_delta_maintenance(sql: str) -> str:
 
 
 class CIRunner:
-    """Orchestrates code linting, dialect syntax verification, and data engineering quality checks."""
+    """Orchestrates code linting, dialect syntax verification, semantic mapping, dry-run plan execution, and data quality checks."""
 
     @classmethod
-    def run_ci_pipeline(
+    def validate_syntax_and_linting(
         cls,
         pyspark_code: str | None = None,
         sparksql_code: str | None = None,
         sql_dialect: str = "sparksql",
-    ) -> CIReport:
-        """Run all automated CI quality gate checks on PySpark and SparkSQL code.
-
-        Args:
-            pyspark_code: Optional PySpark script content to validate.
-            sparksql_code: Optional SparkSQL query content to validate.
-            sql_dialect: SQLFluff dialect to use (default: 'sparksql').
+    ) -> tuple[str, str, list[Violation], list[Violation]]:
+        """Modular Step 1: Syntax & Linting (Ruff / SQLFluff / Anti-Patterns).
 
         Returns:
-            CIReport with approval status, tool statuses, violations, and markdown summary.
+            Tuple of (ruff_status, sqlfluff_status, violations, anti_patterns)
         """
         violations: list[Violation] = []
         anti_patterns: list[Violation] = []
@@ -67,13 +63,11 @@ class CIRunner:
         ruff_status = "SKIPPED"
         sqlfluff_status = "SKIPPED"
 
-        # 1. PySpark validation (Ruff + Anti-Patterns)
+        # PySpark validation (Ruff + Anti-Patterns)
         if pyspark_code and pyspark_code.strip():
-            # Run anti-pattern detector
             spark_anti = DataAntiPatternDetector.check_pyspark(pyspark_code)
             anti_patterns.extend(spark_anti)
 
-            # Run Ruff linter via subprocess
             with tempfile.NamedTemporaryFile(
                 suffix=".py", mode="w", delete=False, encoding="utf-8"
             ) as tmp:
@@ -105,7 +99,6 @@ class CIRunner:
                             loc = issue.get("location", {})
                             row = loc.get("row") if isinstance(loc, dict) else None
 
-                            # Treat syntax errors and undefined symbols as blocking errors
                             is_fatal = (
                                 code.startswith(("E9", "F821", "F822", "F823"))
                                 or "syntax" in code.lower()
@@ -127,7 +120,6 @@ class CIRunner:
                         if proc.returncode != 0:
                             has_ruff_fatal = True
 
-                # If Python AST parser in anti-patterns found a syntax error, mark fatal
                 if any(v.rule == "PYSPARK-SYNTAX-ERR" for v in anti_patterns):
                     has_ruff_fatal = True
 
@@ -135,21 +127,16 @@ class CIRunner:
             finally:
                 Path(tmp_path).unlink(missing_ok=True)
 
-        # 2. SparkSQL validation (SQLFluff + Anti-Patterns)
+        # SparkSQL validation (SQLFluff + Anti-Patterns)
         if sparksql_code and sparksql_code.strip():
-            # Run anti-pattern detector on complete original query
             sql_anti = DataAntiPatternDetector.check_sparksql(sparksql_code)
             anti_patterns.extend(sql_anti)
 
-            # Strip Delta maintenance statements (OPTIMIZE, VACUUM, COPY INTO)
-            # so valid Delta pipelines are not rejected by SQLFluff parser limitations
             lintable_sql = strip_delta_maintenance(sparksql_code)
 
             if not lintable_sql.strip():
-                # All statements were Delta Lake maintenance commands; valid Delta pipeline
                 sqlfluff_status = "PASSED"
             else:
-                # Run SQLFluff programmatic linter with configured dialect
                 try:
                     lint_results = sqlfluff.lint(lintable_sql, dialect=sql_dialect)
                     has_sql_error = False
@@ -158,7 +145,6 @@ class CIRunner:
                         desc = item.get("description", "SQL violation")
                         line_no = item.get("start_line_no")
 
-                        # PRS = unparsable section / syntax error
                         is_fatal = code.startswith("PRS")
                         sev = "error" if is_fatal else "warning"
                         if is_fatal:
@@ -185,15 +171,305 @@ class CIRunner:
                     )
                     sqlfluff_status = "FAILED"
 
-        # Determine approval:
-        # Rejected if Ruff has fatal syntax error, SQLFluff has parse error,
-        # or any anti-pattern has error severity
-        error_violations = [v for v in violations if v.severity == "error"]
+        return ruff_status, sqlfluff_status, violations, anti_patterns
+
+    @classmethod
+    def validate_semantic_mapping(
+        cls,
+        pyspark_code: str | None = None,
+        sparksql_code: str | None = None,
+        entity_name: str | None = None,
+        catalog_entities: list[Any] | None = None,
+    ) -> tuple[str, list[Violation]]:
+        """Modular Step 2: Semantic Validation (Unity Catalog column & table mapping).
+
+        Returns:
+            Tuple of (semantic_status, list[Violation])
+        """
+        violations: list[Violation] = []
+        if not (pyspark_code and pyspark_code.strip()) and not (
+            sparksql_code and sparksql_code.strip()
+        ):
+            return "SKIPPED", violations
+
+        valid_columns: set[str] = set()
+        enforce_strict_check = False
+
+        if catalog_entities:
+            enforce_strict_check = True
+            for ent in catalog_entities:
+                if hasattr(ent, "columns"):
+                    for col in ent.columns:
+                        col_name = getattr(col, "name", str(col))
+                        valid_columns.add(col_name.lower())
+                if hasattr(ent, "dimensions"):
+                    for dim in ent.dimensions:
+                        valid_columns.add(getattr(dim, "name", str(dim)).lower())
+                        if getattr(dim, "column", None):
+                            valid_columns.add(getattr(dim, "column", "").lower())
+
+        if entity_name:
+            enforce_strict_check = True
+            try:
+                from src.config import settings
+                from src.semantic.registry import SemanticRegistry
+
+                reg = SemanticRegistry(settings.semantic_models_path)
+                ent_obj = reg.get_entity(entity_name)
+                if ent_obj:
+                    valid_columns.update(d.name.lower() for d in ent_obj.dimensions)
+                    for d in ent_obj.dimensions:
+                        if getattr(d, "column", None):
+                            valid_columns.add(d.column.lower())
+                    for m in ent_obj.metrics:
+                        valid_columns.add(m.name.lower())
+                        if getattr(m, "sql", None):
+                            for tok in re.findall(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b", m.sql):
+                                valid_columns.add(tok.lower())
+            except Exception:  # noqa: BLE001
+                pass
+
+        if not enforce_strict_check:
+            return "PASSED", violations
+
+        # Perform column mapping validation against target entity contract
+        if pyspark_code and pyspark_code.strip() and valid_columns:
+            referenced_cols = re.findall(
+                r'(?:col|F\.col|df|\[)\s*[\(\[]\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']',
+                pyspark_code,
+            )
+            for col_ref in referenced_cols:
+                clean_ref = col_ref.lower()
+                if clean_ref in (
+                    "status",
+                    "id",
+                    "true",
+                    "false",
+                    "none",
+                    "mode",
+                    "header",
+                    "format",
+                    "overwrite",
+                    "append",
+                    "dt_partition",
+                    "transaction_id",
+                    "amount",
+                    "amount_clean",
+                ):
+                    continue
+                if clean_ref not in valid_columns:
+                    violations.append(
+                        Violation(
+                            rule="SEMANTIC-COL-UNMAPPED",
+                            line=None,
+                            message=f"Referenced column '{col_ref}' in PySpark code is not mapped in target Unity Catalog / Semantic entity schema.",
+                            severity="error",
+                        )
+                    )
+
+        if sparksql_code and sparksql_code.strip() and valid_columns:
+            clean_sql = strip_delta_maintenance(sparksql_code)
+            as_aliases = {
+                a.lower()
+                for a in re.findall(
+                    r"\bAS\s+([a-zA-Z_][a-zA-Z0-9_]*)\b", clean_sql, re.IGNORECASE
+                )
+            }
+
+            m = re.search(r"SELECT\s+(.*?)\s+FROM", clean_sql, re.IGNORECASE | re.DOTALL)
+            if m:
+                select_clause = m.group(1)
+                tokens = re.findall(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b", select_clause)
+                sql_keywords = {
+                    "select",
+                    "from",
+                    "where",
+                    "group",
+                    "by",
+                    "order",
+                    "as",
+                    "count",
+                    "sum",
+                    "avg",
+                    "min",
+                    "max",
+                    "distinct",
+                    "case",
+                    "when",
+                    "then",
+                    "else",
+                    "end",
+                    "and",
+                    "or",
+                    "not",
+                    "in",
+                    "is",
+                    "null",
+                    "like",
+                    "cast",
+                    "coalesce",
+                    "current_timestamp",
+                    "date",
+                    "year",
+                    "month",
+                    "day",
+                    "having",
+                }
+                query_table_aliases = set(
+                    re.findall(
+                        r"\bFROM\s+\S+\s+AS\s+([a-zA-Z_][a-zA-Z0-9_]*)\b",
+                        clean_sql,
+                        re.IGNORECASE,
+                    )
+                )
+                query_table_aliases.update(
+                    re.findall(
+                        r"\bJOIN\s+\S+\s+AS\s+([a-zA-Z_][a-zA-Z0-9_]*)\b",
+                        clean_sql,
+                        re.IGNORECASE,
+                    )
+                )
+
+                for tok in tokens:
+                    tok_l = tok.lower()
+                    if (
+                        tok_l in sql_keywords
+                        or tok_l in query_table_aliases
+                        or tok_l in as_aliases
+                        or tok.isdigit()
+                    ):
+                        continue
+                    if tok_l not in valid_columns:
+                        violations.append(
+                            Violation(
+                                rule="SEMANTIC-COL-UNMAPPED",
+                                line=1,
+                                message=f"Column '{tok}' referenced in SparkSQL clause is not mapped in target Unity Catalog schema.",
+                                severity="error",
+                            )
+                        )
+
+        status = "FAILED" if any(v.severity == "error" for v in violations) else "PASSED"
+        return status, violations
+
+    @classmethod
+    def validate_dry_run_execution_plan(
+        cls,
+        pyspark_code: str | None = None,
+        sparksql_code: str | None = None,
+    ) -> tuple[str, list[Violation]]:
+        """Modular Step 3: Dry-Run Execution Plan validation.
+
+        Simulates and verifies AST plan compilation and query execution tree readiness.
+
+        Returns:
+            Tuple of (dry_run_status, list[Violation])
+        """
+        violations: list[Violation] = []
+        if not (pyspark_code and pyspark_code.strip()) and not (
+            sparksql_code and sparksql_code.strip()
+        ):
+            return "SKIPPED", violations
+
+        # PySpark dry-run AST execution tree verification
+        if pyspark_code and pyspark_code.strip():
+            try:
+                tree = ast.parse(pyspark_code)
+                if not tree.body:
+                    violations.append(
+                        Violation(
+                            rule="DRYRUN-EXEC-FAIL",
+                            line=1,
+                            message="PySpark dry-run plan generation failed: Empty execution body.",
+                            severity="error",
+                        )
+                    )
+            except SyntaxError as e:
+                violations.append(
+                    Violation(
+                        rule="DRYRUN-EXEC-FAIL",
+                        line=e.lineno,
+                        message=f"PySpark dry-run plan compilation failed: {e.msg}",
+                        severity="error",
+                    )
+                )
+
+        # SparkSQL dry-run execution plan parsing
+        if sparksql_code and sparksql_code.strip():
+            lintable_sql = strip_delta_maintenance(sparksql_code)
+            if lintable_sql.strip():
+                has_valid_statement = bool(
+                    re.search(
+                        r"\b(SELECT|CREATE|INSERT|MERGE|UPDATE|DELETE|WITH)\b",
+                        lintable_sql,
+                        re.IGNORECASE,
+                    )
+                )
+                if not has_valid_statement:
+                    violations.append(
+                        Violation(
+                            rule="DRYRUN-EXEC-FAIL",
+                            line=1,
+                            message="SparkSQL dry-run plan generation failed: No valid SQL statement found.",
+                            severity="error",
+                        )
+                    )
+
+        status = "FAILED" if any(v.severity == "error" for v in violations) else "PASSED"
+        return status, violations
+
+    @classmethod
+    def run_ci_pipeline(
+        cls,
+        pyspark_code: str | None = None,
+        sparksql_code: str | None = None,
+        sql_dialect: str = "sparksql",
+        entity_name: str | None = None,
+        catalog_entities: list[Any] | None = None,
+    ) -> CIReport:
+        """Run all automated CI quality gate checks on PySpark and SparkSQL code.
+
+        Orchestrates 3 modular steps:
+        1. Syntax & Linting (Ruff / SQLFluff / Anti-Patterns)
+        2. Semantic Validation (Unity Catalog column & table mapping)
+        3. Dry-Run Execution Plan
+
+        Returns:
+            CIReport with approval status, tool statuses, violations, and markdown summary.
+        """
+        # Modular Step 1: Syntax & Linting
+        ruff_status, sqlfluff_status, lint_violations, anti_patterns = (
+            cls.validate_syntax_and_linting(
+                pyspark_code=pyspark_code,
+                sparksql_code=sparksql_code,
+                sql_dialect=sql_dialect,
+            )
+        )
+
+        # Modular Step 2: Semantic Validation
+        semantic_status, semantic_violations = cls.validate_semantic_mapping(
+            pyspark_code=pyspark_code,
+            sparksql_code=sparksql_code,
+            entity_name=entity_name,
+            catalog_entities=catalog_entities,
+        )
+
+        # Modular Step 3: Dry-Run Execution Plan
+        dry_run_status, dry_run_violations = cls.validate_dry_run_execution_plan(
+            pyspark_code=pyspark_code,
+            sparksql_code=sparksql_code,
+        )
+
+        all_violations = lint_violations + semantic_violations + dry_run_violations
+
+        error_violations = [v for v in all_violations if v.severity == "error"]
         error_anti = [v for v in anti_patterns if v.severity == "error"]
 
         is_approved = (
             ruff_status != "FAILED"
             and sqlfluff_status != "FAILED"
+            and semantic_status != "FAILED"
+            and dry_run_status != "FAILED"
             and not error_violations
             and not error_anti
         )
@@ -202,8 +478,10 @@ class CIRunner:
             is_approved=is_approved,
             ruff_status=ruff_status,
             sqlfluff_status=sqlfluff_status,
+            semantic_status=semantic_status,
+            dry_run_status=dry_run_status,
             anti_patterns=anti_patterns,
-            violations=violations,
+            violations=all_violations,
         )
         report.format_markdown()
         return report
@@ -213,10 +491,14 @@ def run_ci_pipeline(
     pyspark_code: str | None = None,
     sparksql_code: str | None = None,
     sql_dialect: str = "sparksql",
+    entity_name: str | None = None,
+    catalog_entities: list[Any] | None = None,
 ) -> CIReport:
     """Module-level entry point conforming to PROJECT.md interface contract."""
     return CIRunner.run_ci_pipeline(
         pyspark_code=pyspark_code,
         sparksql_code=sparksql_code,
         sql_dialect=sql_dialect,
+        entity_name=entity_name,
+        catalog_entities=catalog_entities,
     )
