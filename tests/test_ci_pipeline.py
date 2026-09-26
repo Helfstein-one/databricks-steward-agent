@@ -2,7 +2,7 @@
 
 from src.ci.anti_patterns import DataAntiPatternDetector
 from src.ci.report import CIReport, Violation
-from src.ci.runner import run_ci_pipeline
+from src.ci.runner import CIRunner, run_ci_pipeline
 
 # ==============================================================================
 # Anti-Pattern Detector Tests
@@ -73,6 +73,50 @@ def test_anti_pattern_sql_delete_without_where():
 
 
 # ==============================================================================
+# Modular CI Runner Tests
+# ==============================================================================
+
+
+def test_modular_step_syntax_and_linting(clean_pyspark_code, clean_sparksql_code):
+    """Verify Modular Step 1: Syntax & Linting."""
+    r_stat, s_stat, _violations, anti = CIRunner.validate_syntax_and_linting(
+        pyspark_code=clean_pyspark_code,
+        sparksql_code=clean_sparksql_code,
+    )
+    assert r_stat == "PASSED"
+    assert s_stat == "PASSED"
+    assert len(anti) == 0
+
+
+def test_modular_step_semantic_mapping():
+    """Verify Modular Step 2: Semantic Validation."""
+    # Test unknown column reference against explicit entity contract
+    sql = "SELECT unknown_col_xyz FROM main.credit.facilities;"
+    status, violations = CIRunner.validate_semantic_mapping(
+        sparksql_code=sql, entity_name="facilities"
+    )
+    assert status == "FAILED"
+    assert any(v.rule == "SEMANTIC-COL-UNMAPPED" for v in violations)
+
+
+def test_modular_step_dry_run_execution_plan(clean_pyspark_code, clean_sparksql_code):
+    """Verify Modular Step 3: Dry-Run Execution Plan validation."""
+    status, violations = CIRunner.validate_dry_run_execution_plan(
+        pyspark_code=clean_pyspark_code,
+        sparksql_code=clean_sparksql_code,
+    )
+    assert status == "PASSED"
+    assert len(violations) == 0
+
+    # Malformed dry run
+    bad_status, bad_violations = CIRunner.validate_dry_run_execution_plan(
+        sparksql_code="INVALID_STMT_WITHOUT_SQL_KEYWORDS"
+    )
+    assert bad_status == "FAILED"
+    assert any(v.rule == "DRYRUN-EXEC-FAIL" for v in bad_violations)
+
+
+# ==============================================================================
 # CI Runner Integration Tests
 # ==============================================================================
 
@@ -88,6 +132,8 @@ def test_ci_pipeline_approves_clean_code(clean_pyspark_code, clean_sparksql_code
     assert report.is_approved is True
     assert report.ruff_status == "PASSED"
     assert report.sqlfluff_status == "PASSED"
+    assert report.semantic_status == "PASSED"
+    assert report.dry_run_status == "PASSED"
     assert len(report.anti_patterns) == 0
     assert "APPROVED" in report.summary_markdown
 
@@ -128,6 +174,8 @@ def test_ci_report_markdown_formatting():
         is_approved=False,
         ruff_status="FAILED",
         sqlfluff_status="PASSED",
+        semantic_status="PASSED",
+        dry_run_status="PASSED",
         anti_patterns=[
             Violation(
                 rule="SPARK-ANTI-001",
@@ -152,5 +200,7 @@ def test_ci_report_markdown_formatting():
     assert "| **Ruff (Python / PySpark)** | FAILED |" in md
     assert "| **SQLFluff (SparkSQL)** | PASSED |" in md
     assert "| **Data Anti-Patterns** | FAILED | 1 |" in md
+    assert "| **Semantic Validation (Unity Catalog)** | PASSED |" in md
+    assert "| **Dry-Run Execution Plan** | PASSED |" in md
     assert "`SPARK-ANTI-001`" in md
     assert "`E999`" in md

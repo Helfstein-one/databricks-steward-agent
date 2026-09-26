@@ -1,4 +1,4 @@
-"""LangGraph agent tools exposing Databricks, Semantic, Mermaid, CI, and GitOps capabilities."""
+"""LangGraph agent tools exposing Databricks, Semantic, Mermaid, CI, GitOps, and Checkpoint persistence capabilities."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 from src.adapters.ci_adapter import CiAdapter
 from src.adapters.databricks_adapter import DatabricksAdapter
 from src.adapters.gitops_adapter import GitOpsAdapter
+from src.agent.checkpoint import get_checkpoint_manager
 from src.config import settings
 from src.etl.generator import generate_medallion_pipeline
 from src.semantic.compiler import SemanticQueryCompiler
@@ -182,7 +183,6 @@ def format_entity_modeling(entity_name: str) -> str:
     reg = SemanticRegistry(settings.semantic_models_path)
     clean_name = (entity_name or "").strip().lower()
 
-    # Normalize prefixes like "tabela ", "table ", "entidade ", "entity ", "da tabela ", "de "
     clean_name = re.sub(
         r"^(a\s+|o\s+|da\s+|do\s+|de\s+)?(tabela|table|entidade|entity)\s+(da\s+|do\s+|de\s+)?",
         "",
@@ -194,7 +194,6 @@ def format_entity_modeling(entity_name: str) -> str:
     entity = reg.get_entity(target_name)
 
     if not entity:
-        # Search for any known entity alias within the string
         sorted_aliases = sorted(ENTITY_ALIAS_MAP.keys(), key=len, reverse=True)
         for alias in sorted_aliases:
             pattern = r"(?:\b|_)" + re.escape(alias) + r"(?:\b|_)"
@@ -330,14 +329,12 @@ def generate_diagram(diagram_type: str = "er", domain: str | None = None) -> str
     reg = SemanticRegistry(settings.semantic_models_path)
     dt = (diagram_type or "er").strip().lower()
 
-    # Determine if Lineage flowchart or ER diagram
     is_lineage = any(k in dt for k in ("lineage", "linhagem", "fluxo", "medallion", "flowchart"))
 
     entities = []
     relationships = []
     domain_title = "Camada Semântica Lakehouse"
 
-    # If domain specified, resolve domain alias or entity focus
     if domain:
         clean_dom = domain.strip().lower()
         resolved_domain = DOMAIN_ALIAS_MAP.get(clean_dom, clean_dom)
@@ -394,7 +391,6 @@ def generate_diagram(diagram_type: str = "er", domain: str | None = None) -> str
             f"```mermaid\n{mermaid_code}\n```"
         )
 
-    # Format relationships table for ER diagrams
     rel_rows = []
     cardinality_pt = {
         "many_to_one": "N:1 (Muitos para Um)",
@@ -511,6 +507,65 @@ def deploy_and_materialize_data_product(
     )
 
 
+def list_etl_checkpoints(thread_id: str = "default", entity_name: str | None = None) -> str:
+    """List all saved ETL checkpoints and versions for a conversation thread or entity."""
+    mgr = get_checkpoint_manager()
+    checkpoints = mgr.list_checkpoints(thread_id=thread_id, entity_name=entity_name)
+
+    if not checkpoints:
+        return f"Nenhum ponto de verificação de ETL encontrado para a sessão/thread '{thread_id}'."
+
+    rows = []
+    for c in checkpoints:
+        rows.append(
+            f"| `v{c['version']}` | `{c['entity_name']}` | `{c['checkpoint_id']}` | {c['ci_status']} | `{c['created_at']}` |"
+        )
+
+    table_md = "\n".join(rows)
+    return (
+        f"### 💾 Histórico de Versões e Checkpoints de ETL\n\n"
+        f"| Versão | Entidade | Checkpoint ID | Status CI | Data/Hora |\n"
+        f"|---|---|---|---|---|\n"
+        f"{table_md}\n\n"
+        f"💡 **Dica:** Peça *'recuperar versão 1 do etl'* ou *'restaurar versão 1 do etl'* para visualizar ou carregar o código anterior."
+    )
+
+
+def get_etl_checkpoint(version_or_id: int | str, thread_id: str = "default") -> str:
+    """Retrieve details and PySpark/SparkSQL code for a specific ETL version checkpoint."""
+    mgr = get_checkpoint_manager()
+    chk = mgr.get_checkpoint(version_or_id=version_or_id, thread_id=thread_id)
+
+    if not chk:
+        return f"Checkpoint/Versão '{version_or_id}' não encontrado."
+
+    return (
+        f"### 💾 ETL Checkpoint: `{chk['checkpoint_id']}` (Versão v{chk['version']})\n\n"
+        f"- **Entidade:** `{chk['entity_name']}`\n"
+        f"- **Status CI:** `{chk['ci_status']}`\n"
+        f"- **Data/Hora:** `{chk['created_at']}`\n\n"
+        f"#### PySpark Pipeline\n```python\n{chk['pyspark_code']}\n```\n\n"
+        f"#### SparkSQL Ingestion\n```sql\n{chk['sparksql_code']}\n```"
+    )
+
+
+def restore_etl_checkpoint(version_or_id: int | str, thread_id: str = "default") -> str:
+    """Restore a previous ETL checkpoint version into active pipeline state."""
+    mgr = get_checkpoint_manager()
+    chk = mgr.restore_checkpoint(version_or_id=version_or_id, thread_id=thread_id)
+
+    if not chk:
+        return f"Falha ao restaurar: Checkpoint/Versão '{version_or_id}' não encontrado."
+
+    return (
+        f"✅ **Versão v{chk['version']} do ETL restaurada com sucesso!**\n\n"
+        f"- **Entidade:** `{chk['entity_name']}`\n"
+        f"- **Checkpoint ID:** `{chk['checkpoint_id']}`\n\n"
+        f"#### PySpark Pipeline\n```python\n{chk['pyspark_code']}\n```\n\n"
+        f"#### SparkSQL Ingestion\n```sql\n{chk['sparksql_code']}\n```"
+    )
+
+
 from langchain_core.tools import tool
 
 STEWARD_TOOLS: list[dict[str, Any]] = [
@@ -563,6 +618,21 @@ STEWARD_TOOLS: list[dict[str, Any]] = [
         "name": "deploy_and_materialize_data_product",
         "description": "Run CI, auto-commit/push to main, dispatch Databricks Job, and register data product in Semantic Layer.",
         "func": deploy_and_materialize_data_product,
+    },
+    {
+        "name": "list_etl_checkpoints",
+        "description": "List all saved versioned ETL checkpoints for a conversation thread.",
+        "func": list_etl_checkpoints,
+    },
+    {
+        "name": "get_etl_checkpoint",
+        "description": "Retrieve PySpark and SparkSQL code for a specific saved ETL version checkpoint.",
+        "func": get_etl_checkpoint,
+    },
+    {
+        "name": "restore_etl_checkpoint",
+        "description": "Restore a previous versioned ETL checkpoint as active pipeline state.",
+        "func": restore_etl_checkpoint,
     },
 ]
 
@@ -662,6 +732,26 @@ def deploy_and_materialize_data_product_tool(
     )
 
 
+@tool
+def list_etl_checkpoints_tool(
+    thread_id: str = "default", entity_name: str | None = None
+) -> str:
+    """List all saved versioned ETL checkpoints for a conversation thread."""
+    return list_etl_checkpoints(thread_id=thread_id, entity_name=entity_name)
+
+
+@tool
+def get_etl_checkpoint_tool(version_or_id: str, thread_id: str = "default") -> str:
+    """Retrieve PySpark and SparkSQL code for a specific saved ETL version checkpoint."""
+    return get_etl_checkpoint(version_or_id=version_or_id, thread_id=thread_id)
+
+
+@tool
+def restore_etl_checkpoint_tool(version_or_id: str, thread_id: str = "default") -> str:
+    """Restore a previous versioned ETL checkpoint as active pipeline state."""
+    return restore_etl_checkpoint(version_or_id=version_or_id, thread_id=thread_id)
+
+
 LANGCHAIN_TOOLS = [
     inspect_unity_catalog_tool,
     load_semantic_models_tool,
@@ -673,6 +763,9 @@ LANGCHAIN_TOOLS = [
     inspect_entity_modeling_tool,
     preview_table_data_tool,
     deploy_and_materialize_data_product_tool,
+    list_etl_checkpoints_tool,
+    get_etl_checkpoint_tool,
+    restore_etl_checkpoint_tool,
 ]
 
 

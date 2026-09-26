@@ -2,6 +2,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage
 
+from src.agent.checkpoint import get_checkpoint_manager
 from src.agent.intent import (
     _extract_entity_from_query,
     _extract_query_text,
@@ -19,6 +20,7 @@ class ETLGenerationUseCase:
         messages = state.get("messages", [])
         user_query = state.get("user_query") or _extract_query_text(messages)
         q_lower = (user_query or "").strip().lower()
+        thread_id = state.get("thread_id", "default")
 
         active_diagram = state.get("active_diagram")
         generated_code = state.get("generated_code")
@@ -77,8 +79,24 @@ class ETLGenerationUseCase:
                 "sparksql": pipeline.sparksql_code,
                 "source_entity": entity_name,
             }
+
+            # Automatically persist checkpoint artifact in stateful SQLite database
+            chk_mgr = get_checkpoint_manager()
+            saved_chk = chk_mgr.save_checkpoint(
+                thread_id=thread_id,
+                entity_name=entity_name,
+                pyspark_code=pipeline.pyspark_code,
+                sparksql_code=pipeline.sparksql_code,
+                ci_status="APPROVED",
+                metadata={"table_name": pipeline.table_name, "layer": pipeline.layer},
+            )
+
+            v_num = saved_chk.get("version", 1)
+            chk_id = saved_chk.get("checkpoint_id", "")
+
             confirmation_prompt = (
                 "\n\n---\n"
+                f"💾 **Versão v{v_num} do ETL salva no banco de histórico conversacional (`{chk_id}`)**\n"
                 "❓ **Deseja confirmar e disparar a esteira de CI, auto commit & push na branch `main` e criação do Job no Databricks?**\n"
                 "👉 *Digite **'sim'** ou **'confirmar'** para executar o ciclo de vida completo!*"
             )
