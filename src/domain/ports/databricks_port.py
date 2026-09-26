@@ -16,6 +16,12 @@ class IDatabricksAdapter(ABC):
         pass
 
     @abstractmethod
+    def introspect_catalog(
+        self, catalog: str | None = None, schema: str | None = None
+    ) -> list[Any]:
+        pass
+
+    @abstractmethod
     def deploy_job(
         self,
         product_name: str,

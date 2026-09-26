@@ -171,6 +171,16 @@ class DatabricksAdapter(IDatabricksAdapter):
         except Exception as e:  # noqa: BLE001
             return f"❌ Erro ao consultar Databricks: {e}"
 
+    def introspect_catalog(
+        self, catalog: str | None = None, schema: str | None = None
+    ) -> list[Any]:
+        from src.config import settings
+
+        client = DatabricksCEClient()
+        cat_to_use = catalog or settings.databricks_default_catalog or "workspace"
+        sch_to_use = schema or settings.databricks_default_schema or "default"
+        return introspect_catalog(catalog=cat_to_use, schema=sch_to_use, client=client)
+
     def deploy_job(
         self,
         product_name: str,
