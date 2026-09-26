@@ -8,10 +8,10 @@ from src.agent.intent import (
     _resolve_anaphoric_entity,
 )
 from src.agent.state import AgentState
-from src.agent.tools import generate_etl_pipeline
 from src.config import settings
-from src.etl.generator import generate_medallion_pipeline
+from src.semantic.models import EntityModel
 from src.semantic.registry import SemanticRegistry
+from src.visualizer.mermaid import generate_etl_flowchart
 
 
 class ETLGenerationUseCase:
@@ -20,11 +20,9 @@ class ETLGenerationUseCase:
         user_query = state.get("user_query") or _extract_query_text(messages)
         q_lower = (user_query or "").strip().lower()
 
-        active_diagram = state.get("active_diagram")
         generated_code = state.get("generated_code")
         ci_report = state.get("ci_report")
         gitops_result = state.get("gitops_result")
-        pending_pipeline = state.get("pending_pipeline")
 
         layer = "gold" if "gold" in q_lower else "bronze" if "bronze" in q_lower else "silver"
         reg = SemanticRegistry(settings.semantic_models_path)
@@ -63,43 +61,37 @@ class ETLGenerationUseCase:
             mock_ents = {e.name: e for e in _build_mock_entities()}
             ent_obj = mock_ents.get(entity_name)
 
-        if ent_obj:
-            pipeline = generate_medallion_pipeline(ent_obj, layer=layer)
-            generated_code = {
-                "pyspark": pipeline.pyspark_code,
-                "sparksql": pipeline.sparksql_code,
-                "table_name": pipeline.table_name,
-                "layer": pipeline.layer,
-            }
-            pending_pipeline = {
-                "product_name": pipeline.table_name,
-                "pyspark": pipeline.pyspark_code,
-                "sparksql": pipeline.sparksql_code,
-                "source_entity": entity_name,
-            }
-            confirmation_prompt = (
-                "\n\n---\n"
-                "❓ **Deseja confirmar e disparar a esteira de CI, auto commit & push na branch `main` e criação do Job no Databricks?**\n"
-                "👉 *Digite **'sim'** ou **'confirmar'** para executar o ciclo de vida completo!*"
-            )
-            response_text = (
-                f"### Generated Medallion Pipeline: {pipeline.table_name} ({pipeline.layer})\n\n"
-                f"#### PySpark Pipeline\n```python\n{pipeline.pyspark_code}\n```\n\n"
-                f"#### SparkSQL DDL & Ingestion\n```sql\n{pipeline.sparksql_code}\n```{confirmation_prompt}"
-            )
-        else:
-            response_text = generate_etl_pipeline(entity_name, layer=layer)
-            confirmation_prompt = (
-                "\n\n---\n"
-                "❓ **Deseja confirmar e disparar a esteira de CI, auto commit & push na branch `main` e criação do Job no Databricks?**\n"
-                "👉 *Digite **'sim'** ou **'confirmar'** para executar o ciclo de vida completo!*"
-            )
-            response_text += confirmation_prompt
+        if not ent_obj:
+            ent_obj = EntityModel(name=entity_name, table_name=entity_name)
+
+        table_name = ent_obj.table_name or ent_obj.name
+        flowchart_code = generate_etl_flowchart(ent_obj, layer=layer)
+        flowchart_md = f"```mermaid\n{flowchart_code}\n```"
+
+        pending_pipeline = {
+            "product_name": table_name,
+            "layer": layer,
+            "source_entity": entity_name,
+            "entity_name": ent_obj.name,
+            "flowchart": flowchart_code,
+            "status": "proposed",
+        }
+
+        confirmation_prompt = (
+            "\n\n---\n"
+            "❓ **Deseja aprovar esta proposta de ETL e gerar o código PySpark/SQL com validação de CI e deploy?**\n"
+            "👉 *Digite **'sim'** ou **'confirmar'** para executar o ciclo de vida completo!*"
+        )
+        response_text = (
+            f"### 🎨 Proposta Visual de Pipeline ETL ({layer.upper()} Layer): {table_name}\n\n"
+            f"{flowchart_md}"
+            f"{confirmation_prompt}"
+        )
 
         return {
             "messages": [AIMessage(content=response_text)],
             "response": response_text,
-            "active_diagram": active_diagram,
+            "active_diagram": flowchart_md,
             "generated_code": generated_code,
             "ci_report": ci_report,
             "gitops_result": gitops_result,

@@ -10,6 +10,7 @@ from src.visualizer.mermaid import (
     _sanitize_id,
     _sanitize_type,
     generate_er_diagram,
+    generate_etl_flowchart,
     generate_lineage_diagram,
 )
 
@@ -142,3 +143,32 @@ def test_generate_lineage_diagram_custom_layer_fallback():
     assert "subgraph Silver" in lineage
     assert "subgraph Gold" in lineage
     assert "raw_events -->" in lineage
+
+
+def test_generate_etl_flowchart_bronze_silver_gold():
+    """Verify generate_etl_flowchart constructs flowchart LR with subgraphs for Bronze, Silver, Gold."""
+    ent = EntityModel(
+        name="transactions",
+        table_name="workspace.default.transactions",
+        primary_key="transaction_id",
+    )
+
+    # Bronze flowchart
+    flow_b = generate_etl_flowchart(ent, layer="bronze")
+    assert flow_b.startswith("flowchart LR")
+    assert "subgraph Source" in flow_b
+    assert "/mnt/raw/transactions" in flow_b
+    assert "subgraph Transformations" in flow_b
+    assert "subgraph Target" in flow_b
+
+    # Silver flowchart
+    flow_s = generate_etl_flowchart(ent, layer="silver")
+    assert flow_s.startswith("flowchart LR")
+    assert "bronze_transactions" in flow_s
+    assert "Deduplication on PK: transaction_id" in flow_s
+
+    # Gold flowchart
+    flow_g = generate_etl_flowchart(ent, layer="gold")
+    assert flow_g.startswith("flowchart LR")
+    assert "silver_transactions" in flow_g
+    assert "Aggregate Business KPIs" in flow_g
