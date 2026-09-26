@@ -59,9 +59,18 @@ class GitOpsPRUseCase:
         )
         gitops_result = result
 
-        if result.status == "rejected":
+        if result.status == "rejected" or not report.is_approved:
             response_text = f"❌ PR Creation Blocked: CI Quality Gate Rejected the pipeline.\n\n{report.summary_markdown}"
+            waiting_for_correction = True
+            error_recovery = {
+                "source": "gitops_pr",
+                "logs": response_text,
+                "pyspark_code": py_code,
+                "sparksql_code": sql_code,
+            }
         else:
+            waiting_for_correction = False
+            error_recovery = None
             response_text = (
                 f"✅ PR Successfully Created!\n\n"
                 f"- **Branch:** `{result.branch_name}`\n"
@@ -78,4 +87,6 @@ class GitOpsPRUseCase:
             "ci_report": ci_report,
             "gitops_result": gitops_result,
             "pending_pipeline": pending_pipeline,
+            "waiting_for_correction": waiting_for_correction,
+            "error_recovery": error_recovery,
         }

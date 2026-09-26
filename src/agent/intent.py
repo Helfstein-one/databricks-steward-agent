@@ -662,6 +662,18 @@ def _is_gitops_query(q_l: str) -> bool:
     return any(k in q_l for k in git_kw)
 
 
+def is_error_recovery_state(state: AgentState | dict[str, Any]) -> bool:
+    """Check if state holds a failed CI report, deployment error, or waiting_for_correction flag."""
+    if not state:
+        return False
+    if state.get("waiting_for_correction") is True:
+        return True
+    if state.get("error_recovery"):
+        return True
+    ci_rep = state.get("ci_report")
+    return bool(ci_rep is not None and hasattr(ci_rep, "is_approved") and not ci_rep.is_approved)
+
+
 def _synthesize_conversational_response(
     det_result: dict[str, Any], client: Any, user_query: str
 ) -> dict[str, Any]:
