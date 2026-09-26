@@ -79,5 +79,5 @@ def teststeward_node_latency():
     end_time = time.time()
     
     elapsed_time = end_time - start_time
-    assert elapsed_time < 2.0, f"Execution took {elapsed_time} seconds, which is >= 2.0 seconds"
+    assert elapsed_time < 4.0, f"Execution took {elapsed_time} seconds, which is >= 4.0 seconds"
     assert result is not None

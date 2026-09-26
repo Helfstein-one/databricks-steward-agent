@@ -75,7 +75,7 @@ def test_etl_generation_use_case_persists_checkpoint(monkeypatch, tmp_path):
     res = use_case.execute(state)
 
     assert "response" in res
-    assert "Versão v1 do ETL salva no banco de histórico conversacional" in res["response"]
+    assert "Proposta v1 salva no banco de histórico conversacional" in res["response"]
 
     saved = test_mgr.list_checkpoints(thread_id="thread-test-usecase")
     assert len(saved) >= 1

@@ -13,7 +13,7 @@ from src.visualizer.mermaid import generate_etl_flowchart
 class ETLGenerationUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
         messages = state.get("messages", [])
-        user_query = messages[-1].content if messages else ""
+        user_query = messages[-1].get("content", "") if messages and isinstance(messages[-1], dict) else getattr(messages[-1], "content", "") if messages else state.get("user_query", "")
         thread_id = state.get("thread_id", "default_thread")
 
         entity_name = _extract_table_or_entity(user_query)
