@@ -49,6 +49,10 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
             intent = "OTHER"
         state["intent"] = intent
 
+    if "{" in query and "flow" in query and "}" in query:
+        return uc.JsonBuilderUseCase().execute(state)
+    if "drag" in q_l or "drop" in q_l or "widget" in q_l or "visual" in q_l:
+        return uc.GenerativeUIUseCase().execute(state)
     if _is_title_request(query) or intent == "TITLE":
         return uc.TitleUseCase().execute(state)
     if _is_confirmation(query) or intent == "CONFIRM":
