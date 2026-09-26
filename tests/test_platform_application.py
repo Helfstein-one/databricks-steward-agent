@@ -42,6 +42,9 @@ def test_ports_abstract_methods():
         def inspect_schema(self):
             return super().inspect_schema()
 
+        def introspect_catalog(self, catalog: str | None = None, schema: str | None = None):
+            return super().introspect_catalog(catalog, schema)
+
         def deploy_job(self, product_name: str, pyspark_code: str, sparksql_code: str):
             return super().deploy_job(product_name, pyspark_code, sparksql_code)
 
