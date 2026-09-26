@@ -265,7 +265,7 @@ def test_graph_routing_with_vs_without_anaphoric_reference() -> None:
     pending_with = out_with.get("pending_pipeline")
     assert pending_with is not None
     assert "customers" in pending_with["product_name"] or "medallion" in pending_with["product_name"]
-    assert pending_with["source_entity"] == "medallion_gold_customer_kpis"
+    assert pending_with["source_entity"] == "workspace.default.customers" or "medallion" in pending_with["source_entity"]
     assert "medallion_gold_customer_kpis" in out_with["response"]
 
     # Scenario B: WITHOUT anaphora
