@@ -26,3 +26,5 @@ class AgentState(TypedDict, total=False):
     pending_pipeline: dict[str, Any] | None
     job_result: dict[str, Any] | None
     preview_data: dict[str, Any] | None
+    waiting_for_correction: bool | None
+    error_recovery: dict[str, Any] | None

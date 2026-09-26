@@ -126,6 +126,7 @@ def test_databricks_adapter_error_handling():
 def test_gitops_adapter_error_handling():
     adapter = GitOpsAdapter()
     import subprocess
+
     import requests
 
     # RequestException

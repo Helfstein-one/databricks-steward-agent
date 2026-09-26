@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from src.agent.graph import steward_node
+
 """Empirical Challenger M2 Adversarial Test Suite.
 
 Stress-tests:
@@ -19,7 +21,6 @@ from open_webui_pipe import Pipe
 from src.agent.intent import (
     _is_confirmation,
     _resolve_anaphoric_entity,
-    
 )
 from src.agent.state import AgentState
 

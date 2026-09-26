@@ -27,11 +27,22 @@ class DeploymentConfirmationUseCase:
             source_entity=p_src,
         )
 
-        if res.get("status") == "ci_failed":
+        if res.get("status") != "success":
             response_text = str(res.get("message", "❌ CI Quality Gate rejeitou o pipeline."))
             ci_report = res.get("ci_report")
             active_diagram = state.get("active_diagram")
+            waiting_for_correction = True
+            error_recovery = {
+                "source": "deployment",
+                "status": res.get("status"),
+                "logs": response_text,
+                "pyspark_code": p_py,
+                "sparksql_code": p_sql,
+                "product_name": prod_name,
+            }
         else:
+            waiting_for_correction = False
+            error_recovery = None
             ci_rep = res["ci_report"]
             git_res = res["git_result"]
             job_res = res["job_result"]
@@ -80,5 +91,7 @@ class DeploymentConfirmationUseCase:
             "ci_report": ci_report,
             "gitops_result": gitops_result,
             "job_result": res.get("job_result", None),
-            "pending_pipeline": None,
+            "pending_pipeline": None if not waiting_for_correction else pending,
+            "waiting_for_correction": waiting_for_correction,
+            "error_recovery": error_recovery,
         }

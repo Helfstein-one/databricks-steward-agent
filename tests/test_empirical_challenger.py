@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from src.agent.graph import create_steward_graph
+
 """Empirical stress test suite by Challenger M1_1.
 
 Tests LangGraph multi-turn flow, anaphoric reference resolution,
@@ -18,7 +20,6 @@ from src.agent.intent import (
     _is_confirmation,
     _is_data_preview_query,
     _resolve_anaphoric_entity,
-    
 )
 from src.gitops.git_client import GitClient
 
