@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ETL Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .droppable { min-height: 200px; border: 2px dashed #ccc; padding: 10px; }
+        .draggable { cursor: grab; background: #e2e8f0; padding: 8px; margin: 4px; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-gray-50 p-4">
+    <div class="max-w-5xl mx-auto bg-white rounded shadow p-6">
+        <h2 class="text-xl font-bold mb-4">Visual ETL Builder (Low-Code)</h2>
+        <div class="flex gap-4">
+            <div class="w-1/4 bg-gray-100 p-4 rounded" id="palette">
+                <h3 class="font-semibold mb-2">Sources</h3>
+                <div class="draggable" draggable="true" data-type="source" data-val="medallion_silver_transactions">silver_transactions</div>
+                <div class="draggable" draggable="true" data-type="source" data-val="customers">customers</div>
+                
+                <h3 class="font-semibold mb-2 mt-4">Transformations</h3>
+                <div class="draggable" draggable="true" data-type="transform" data-val="GROUP BY">Group By</div>
+                <div class="draggable" draggable="true" data-type="transform" data-val="JOIN">Join</div>
+                <div class="draggable" draggable="true" data-type="transform" data-val="FILTER">Filter</div>
+            </div>
+            
+            <div class="w-3/4">
+                <h3 class="font-semibold mb-2">Canvas (Drag items here)</h3>
+                <div class="droppable bg-gray-50 rounded" id="canvas">
+                    <!-- Dropped items go here -->
+                </div>
+                <button id="saveBtn" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700">Save ETL & Generate</button>
+            </div>
+        </div>
+        <div id="output" class="mt-4 p-2 bg-gray-800 text-green-400 font-mono text-sm rounded hidden"></div>
+    </div>
+
+    <script>
+        const draggables = document.querySelectorAll('.draggable');
+        const canvas = document.getElementById('canvas');
+        let draggedItem = null;
+
+        draggables.forEach(item => {
+            item.addEventListener('dragstart', (e) => {
+                draggedItem = item;
+                setTimeout(() => item.classList.add('opacity-50'), 0);
+            });
+            item.addEventListener('dragend', () => {
+                setTimeout(() => item.classList.remove('opacity-50'), 0);
+                draggedItem = null;
+            });
+        });
+
+        canvas.addEventListener('dragover', e => {
+            e.preventDefault();
+        });
+
+        canvas.addEventListener('drop', e => {
+            e.preventDefault();
+            if (draggedItem) {
+                const clone = draggedItem.cloneNode(true);
+                clone.classList.remove('opacity-50');
+                clone.removeAttribute('draggable');
+                
+                // Add a remove button
+                const btn = document.createElement('span');
+                btn.innerHTML = ' &times;';
+                btn.className = 'text-red-500 cursor-pointer ml-2 font-bold';
+                btn.onclick = () => clone.remove();
+                clone.appendChild(btn);
+
+                canvas.appendChild(clone);
+            }
+        });
+
+        document.getElementById('saveBtn').addEventListener('click', () => {
+            const nodes = Array.from(canvas.children).map(child => ({
+                type: child.getAttribute('data-type'),
+                value: child.getAttribute('data-val')
+            }));
+            const payload = JSON.stringify({ flow: nodes }, null, 2);
+            document.getElementById('output').classList.remove('hidden');
+            document.getElementById('output').innerText = "Payload generated. Copy this to the chat:\n\n" + payload;
+            
+            // If embedded in Open WebUI, we could theoretically send a postMessage or copy to clipboard
+            navigator.clipboard.writeText(payload);
+        });
+    </script>
+</body>
+</html>
