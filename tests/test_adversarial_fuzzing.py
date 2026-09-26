@@ -622,11 +622,11 @@ class TestOpenWebUIPipeFuzzing:
         res_sem = pipe.pipe(body_sem)
         assert "Semantic Domain" in res_sem or "Domain" in res_sem
 
-        # 4. Medallion ETL pipeline generation
+        # 4. Medallion ETL pipeline generation (Step 1: low-code Mermaid flowchart)
         body_etl = {"messages": [{"role": "user", "content": "gerar pipeline gold de facilities"}]}
         res_etl = pipe.pipe(body_etl)
-        assert "Generated Medallion Pipeline" in res_etl
-        assert "PySpark" in res_etl
+        assert "Proposta Visual de Pipeline ETL" in res_etl
+        assert "flowchart LR" in res_etl
 
         # 5. CI Quality Gate
         body_ci = {
@@ -656,7 +656,7 @@ class TestOpenWebUIPipeFuzzing:
         }
         res = pipe.pipe(body)
         # Empirically demonstrated: routes to Medallion ETL, not GitOps PR
-        assert "Generated Medallion Pipeline" in res
+        assert "Proposta Visual de Pipeline ETL" in res
 
     def test_pipe_streaming_execution(self) -> None:
         """Verify streaming generator yields non-empty text chunks reconstituting full output."""

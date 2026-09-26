@@ -26,6 +26,7 @@ from src.agent.intent import (
     get_local_chat_client,
     handle_llm_conceptual,
     handle_llm_greeting,
+    is_error_recovery_state,
 )
 from src.agent.state import AgentState
 from src.application import use_cases as uc
@@ -35,6 +36,9 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
     client = llm or get_local_chat_client()
     query = state.get("user_query") or _extract_query_text(state.get("messages", []))
     q_l = query.strip().lower()
+
+    if is_error_recovery_state(state):
+        return uc.ErrorCorrectionUseCase().execute(state, llm=client)
 
     intent = state.get("intent")
     is_test = bool(os.getenv("PYTEST_CURRENT_TEST"))
