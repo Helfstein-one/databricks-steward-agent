@@ -16,7 +16,7 @@ class GenerativeUIUseCase:
         for entity in registry.entities.values():
             schema_list.append({
                 "name": entity.name,
-                "columns": [{"name": c.name, "type": c.data_type} for c in entity.columns]
+                "columns": [{"name": c.name, "type": c.type} for c in entity.columns]
             })
             
         schema_json_str = json.dumps(schema_list)
