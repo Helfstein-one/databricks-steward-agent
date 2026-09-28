@@ -57,7 +57,7 @@ class DeploymentConfirmationUseCase:
         )
 
         if res.get("status") != "success":
-            response_text = str(res.get("message", "❌ CI Quality Gate rejeitou o pipeline."))
+            response_text = str(res.get("message") or res.get("error") or "❌ CI Quality Gate rejeitou o pipeline.")
             ci_report = res.get("ci_report")
             active_diagram = state.get("active_diagram")
             waiting_for_correction = True
