@@ -35,6 +35,7 @@ from src.application import use_cases as uc
 def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, Any]:
     client = llm or get_local_chat_client()
     query = state.get("user_query") or _extract_query_text(state.get("messages", []))
+    state["user_query"] = query
     q_l = query.strip().lower()
 
     if is_error_recovery_state(state):
