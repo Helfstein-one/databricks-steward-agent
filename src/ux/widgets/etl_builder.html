@@ -1,72 +1,150 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <title>ETL Builder</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .droppable { min-height: 200px; border: 2px dashed #ccc; padding: 10px; }
-        .draggable { cursor: grab; background: #e2e8f0; padding: 8px; margin: 4px; border-radius: 4px; }
+        body { background-color: transparent !important; }
+        .droppable { min-height: 250px; border: 2px dashed #4b5563; padding: 16px; border-radius: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start; }
+        .draggable { cursor: grab; padding: 6px 12px; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; display: inline-flex; align-items: center; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); transition: transform 0.1s; }
+        .draggable:active { cursor: grabbing; transform: scale(0.95); }
+        
+        .source-pill { background-color: #3b82f6; color: white; border: 1px solid #2563eb; }
+        .transform-pill { background-color: #10b981; color: white; border: 1px solid #059669; }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
     </style>
 </head>
-<body class="bg-gray-50 p-4">
-    <div class="max-w-5xl mx-auto bg-white rounded shadow p-6">
-        <h2 class="text-xl font-bold mb-4">Visual ETL Builder (Low-Code)</h2>
-        <div class="flex gap-4">
-            <div class="w-1/4 bg-gray-100 p-4 rounded" id="palette">
-                <h3 class="font-semibold mb-2">Sources</h3>
-                <div class="draggable" draggable="true" data-type="source" data-val="medallion_silver_transactions">silver_transactions</div>
-                <div class="draggable" draggable="true" data-type="source" data-val="customers">customers</div>
+<body class="p-2 antialiased font-sans">
+    <div class="max-w-4xl mx-auto bg-gray-900 text-gray-100 rounded-xl shadow-2xl border border-gray-700 overflow-hidden flex flex-col h-[550px]">
+        
+        <!-- Header -->
+        <div class="px-6 py-4 bg-gray-800 border-b border-gray-700 flex justify-between items-center">
+            <h2 class="text-lg font-semibold flex items-center gap-2">
+                <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                Visual ETL Builder <span class="text-sm font-normal text-gray-400 ml-2">(Low-Code)</span>
+            </h2>
+            <button id="saveBtn" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                Export JSON Payload
+            </button>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex flex-1 overflow-hidden">
+            
+            <!-- Sidebar / Palette -->
+            <div class="w-1/3 bg-gray-800/50 p-5 border-r border-gray-700 overflow-y-auto">
+                <h3 class="text-xs uppercase tracking-wider text-gray-400 font-bold mb-3">Data Sources</h3>
+                <div class="flex flex-col gap-2 mb-6 items-start">
+                    <div class="draggable source-pill" draggable="true" data-type="source" data-val="medallion_silver_transactions">
+                        <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+                        silver_transactions
+                    </div>
+                    <div class="draggable source-pill" draggable="true" data-type="source" data-val="customers">
+                        <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+                        customers
+                    </div>
+                </div>
                 
-                <h3 class="font-semibold mb-2 mt-4">Transformations</h3>
-                <div class="draggable" draggable="true" data-type="transform" data-val="GROUP BY">Group By</div>
-                <div class="draggable" draggable="true" data-type="transform" data-val="JOIN">Join</div>
-                <div class="draggable" draggable="true" data-type="transform" data-val="FILTER">Filter</div>
+                <h3 class="text-xs uppercase tracking-wider text-gray-400 font-bold mb-3">Transformations</h3>
+                <div class="flex flex-col gap-2 items-start">
+                    <div class="draggable transform-pill" draggable="true" data-type="transform" data-val="GROUP BY">
+                        <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        Group By
+                    </div>
+                    <div class="draggable transform-pill" draggable="true" data-type="transform" data-val="JOIN">
+                        <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                        Join
+                    </div>
+                    <div class="draggable transform-pill" draggable="true" data-type="transform" data-val="FILTER">
+                        <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                        Filter
+                    </div>
+                </div>
             </div>
             
-            <div class="w-3/4">
-                <h3 class="font-semibold mb-2">Canvas (Drag items here)</h3>
-                <div class="droppable bg-gray-50 rounded" id="canvas">
-                    <!-- Dropped items go here -->
+            <!-- Canvas -->
+            <div class="w-2/3 p-5 flex flex-col bg-gray-900 relative">
+                <h3 class="text-sm text-gray-300 font-medium mb-3">Pipeline Canvas (Drop items here)</h3>
+                <div class="droppable bg-gray-800/30 flex-1 relative" id="canvas">
+                    <div id="canvas-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-500 text-sm font-medium pointer-events-none">
+                        Arrastar blocos aqui...
+                    </div>
                 </div>
-                <button id="saveBtn" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700">Save ETL & Generate</button>
+                
+                <!-- Output Modal / Panel -->
+                <div id="output-panel" class="hidden absolute bottom-5 left-5 right-5 bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-4 z-10">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-bold text-green-400 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            Copiado com sucesso!
+                        </span>
+                        <button id="closeOutput" class="text-gray-400 hover:text-white">&times;</button>
+                    </div>
+                    <p class="text-xs text-gray-300 mb-2">Cole o código abaixo de volta no chat para eu compilar a pipeline:</p>
+                    <textarea id="output" class="w-full h-24 bg-gray-950 text-gray-300 font-mono text-xs p-3 rounded border border-gray-700 outline-none resize-none" readonly></textarea>
+                </div>
             </div>
         </div>
-        <div id="output" class="mt-4 p-2 bg-gray-800 text-green-400 font-mono text-sm rounded hidden"></div>
     </div>
 
     <script>
         const draggables = document.querySelectorAll('.draggable');
         const canvas = document.getElementById('canvas');
+        const placeholder = document.getElementById('canvas-placeholder');
+        const outputPanel = document.getElementById('output-panel');
+        const outputArea = document.getElementById('output');
         let draggedItem = null;
 
         draggables.forEach(item => {
             item.addEventListener('dragstart', (e) => {
                 draggedItem = item;
-                setTimeout(() => item.classList.add('opacity-50'), 0);
+                setTimeout(() => item.classList.add('opacity-50', 'ring-2', 'ring-white'), 0);
             });
             item.addEventListener('dragend', () => {
-                setTimeout(() => item.classList.remove('opacity-50'), 0);
+                setTimeout(() => item.classList.remove('opacity-50', 'ring-2', 'ring-white'), 0);
                 draggedItem = null;
             });
         });
 
         canvas.addEventListener('dragover', e => {
             e.preventDefault();
+            canvas.classList.add('border-blue-500', 'bg-blue-900/10');
+        });
+
+        canvas.addEventListener('dragleave', e => {
+            canvas.classList.remove('border-blue-500', 'bg-blue-900/10');
         });
 
         canvas.addEventListener('drop', e => {
             e.preventDefault();
+            canvas.classList.remove('border-blue-500', 'bg-blue-900/10');
             if (draggedItem) {
+                if (placeholder) placeholder.style.display = 'none';
+                
                 const clone = draggedItem.cloneNode(true);
-                clone.classList.remove('opacity-50');
+                clone.classList.remove('opacity-50', 'ring-2', 'ring-white');
                 clone.removeAttribute('draggable');
+                clone.classList.add('cursor-default');
                 
                 // Add a remove button
                 const btn = document.createElement('span');
-                btn.innerHTML = ' &times;';
-                btn.className = 'text-red-500 cursor-pointer ml-2 font-bold';
-                btn.onclick = () => clone.remove();
+                btn.innerHTML = `
+                <svg class="w-3.5 h-3.5 hover:text-red-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                `;
+                btn.className = 'text-white/80 cursor-pointer ml-2 p-0.5 rounded-full hover:bg-white/20 flex items-center justify-center';
+                btn.onclick = () => {
+                    clone.remove();
+                    if (canvas.children.length <= 1) {
+                        if (placeholder) placeholder.style.display = 'flex';
+                    }
+                };
                 clone.appendChild(btn);
 
                 canvas.appendChild(clone);
@@ -74,16 +152,24 @@
         });
 
         document.getElementById('saveBtn').addEventListener('click', () => {
-            const nodes = Array.from(canvas.children).map(child => ({
-                type: child.getAttribute('data-type'),
-                value: child.getAttribute('data-val')
-            }));
-            const payload = JSON.stringify({ flow: nodes }, null, 2);
-            document.getElementById('output').classList.remove('hidden');
-            document.getElementById('output').innerText = "Payload generated. Copy this to the chat:\n\n" + payload;
+            const nodes = Array.from(canvas.children)
+                .filter(child => child.id !== 'canvas-placeholder')
+                .map(child => ({
+                    type: child.getAttribute('data-type'),
+                    value: child.getAttribute('data-val')
+                }));
             
-            // If embedded in Open WebUI, we could theoretically send a postMessage or copy to clipboard
-            navigator.clipboard.writeText(payload);
+            const payload = "Aqui está o meu fluxo construído na interface visual:\n" + JSON.stringify({ flow: nodes }, null, 2);
+            
+            outputArea.value = payload;
+            outputPanel.classList.remove('hidden');
+            
+            // Try to copy to clipboard
+            navigator.clipboard.writeText(payload).catch(err => console.log('Clipboard blocked, manual copy required'));
+        });
+
+        document.getElementById('closeOutput').addEventListener('click', () => {
+            outputPanel.classList.add('hidden');
         });
     </script>
 </body>
