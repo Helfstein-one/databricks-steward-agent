@@ -50,7 +50,7 @@ def steward_node(state: AgentState, llm: ChatOpenAI | None = None) -> dict[str, 
             intent = "OTHER"
         state["intent"] = intent
 
-    if "{" in query and "flow" in query and "}" in query:
+    if "[ETL_BUILDER_PAYLOAD]" in query or ("{" in query and "flow" in query and "}" in query):
         return uc.JsonBuilderUseCase().execute(state)
     if "drag" in q_l or "drop" in q_l or "widget" in q_l or "visual builder" in q_l:
         return uc.GenerativeUIUseCase().execute(state)
