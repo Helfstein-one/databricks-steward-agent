@@ -32,7 +32,7 @@ services:
       - SEMANTIC_MODELS_PATH=/app/configs/semantic_models
     volumes:
       # Live reload semantic models without rebuild
-      - ./configs/semantic_models:/app/configs/semantic_models:ro
+      - ./configs/semantic_models:/app/configs/semantic_models:rw
 
   # =======================================================
   # Open WebUI (Interface de Chat e Visualização Mermaid)
