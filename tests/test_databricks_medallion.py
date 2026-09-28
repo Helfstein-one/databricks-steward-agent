@@ -98,6 +98,7 @@ def test_databricks_medallion_modeling_formatting():
     assert "transaction_id" in output
     assert "total_revenue" in output
     assert "erDiagram" in output
+    assert "medallion_bronze_transactions" in output
 
 
 def test_databricks_medallion_diagram_default():
@@ -106,6 +107,7 @@ def test_databricks_medallion_diagram_default():
     assert "erDiagram" in output
     assert "medallion_silver_transactions" in output
     assert "medallion_gold_sales_kpis" in output
+    assert "medallion_bronze_transactions" in output
 
 
 def test_databricks_medallion_graph_routing_relations_query():

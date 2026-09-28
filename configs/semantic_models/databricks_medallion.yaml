@@ -339,7 +339,7 @@ entities:
     type: many_to_one
 - name: medallion_gold_sales_summary
   table: workspace.default.medallion_gold_sales_summary
-  primary_key: date
+  primary_key: REPLACE
   layer: gold
   description: Data Product medallion_gold_sales_summary gerado e materializado no
     Databricks Unity Catalog.
@@ -347,22 +347,22 @@ entities:
   - medallion_gold_sales_summary
   - medallion gold sales summary
   dimensions:
-  - name: date
+  - name: REPLACE
     type: string
-    column: date
-    description: Coluna date do data product medallion_gold_sales_summary
-  - name: category
+    column: REPLACE
+    description: Coluna REPLACE do data product medallion_gold_sales_summary
+  - name: medallion_gold_sales_summary
     type: string
-    column: category
-    description: Coluna category do data product medallion_gold_sales_summary
-  - name: total_revenue
-    type: string
-    column: total_revenue
-    description: Coluna total_revenue do data product medallion_gold_sales_summary
+    column: medallion_gold_sales_summary
+    description: Coluna medallion_gold_sales_summary do data product medallion_gold_sales_summary
   - name: total_orders
     type: string
     column: total_orders
     description: Coluna total_orders do data product medallion_gold_sales_summary
+  - name: medallion_silver_transactions
+    type: string
+    column: medallion_silver_transactions
+    description: Coluna medallion_silver_transactions do data product medallion_gold_sales_summary
   metrics:
   - name: total_medallion_gold_sales_summary_records
     type: count
@@ -371,9 +371,9 @@ entities:
   relationships:
   - name: medallion_silver_transactions_to_medallion_gold_sales_summary
     from_entity: medallion_silver_transactions
-    from_column: date
+    from_column: transaction_id
     to_entity: medallion_gold_sales_summary
-    to_column: date
+    to_column: transaction_id
     type: many_to_one
 - name: brasa
   table: workspace.default.brasa
@@ -574,6 +574,13 @@ entities:
     type: avg
     sql: AVG(MERGE)
     description: Média de MERGE
+  relationships:
+  - name: medallion_silver_transactions_to_workspace_default_medallion_silver_transactions
+    from_entity: medallion_silver_transactions
+    from_column: transaction_id
+    to_entity: workspace_default_medallion_silver_transactions
+    to_column: transaction_id
+    type: many_to_one
 relationships:
 - from_entity: medallion_bronze_transactions
   to_entity: medallion_silver_transactions
