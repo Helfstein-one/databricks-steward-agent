@@ -33,7 +33,7 @@ class GenerativeUIUseCase:
         
         # Ajustar o CSS base do iframe (remover fundo branco)
         data_uri = f"data:text/html;base64,{html_b64}"
-        iframe_md = f'<iframe src="{data_uri}" width="100%" height="600px" style="border:none; border-radius: 8px; background: transparent;"></iframe>'
+        iframe_md = f'<iframe src="{data_uri}" width="100%" height="700px" style="border:none; border-radius: 8px; background: transparent;" allow="fullscreen" allowfullscreen></iframe>'
         
         response_text = (
             "### 📐 Interactive Semantic ER Builder\n\n"
