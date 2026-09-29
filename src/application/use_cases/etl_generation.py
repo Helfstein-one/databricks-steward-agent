@@ -8,6 +8,7 @@ from src.config import settings
 from src.semantic.models import EntityModel
 from src.semantic.registry import SemanticRegistry
 from src.visualizer.mermaid import generate_etl_flowchart
+from src.etl.generator import generate_medallion_pipeline
 
 
 class ETLGenerationUseCase:
@@ -48,9 +49,14 @@ class ETLGenerationUseCase:
             table_name = table_name.replace("silver", "gold") + "_kpis"
         elif layer == "silver" and "bronze" in table_name:
             table_name = table_name.replace("bronze", "silver")
-
+        ent_obj.table_name = table_name
+        
         flowchart_code = generate_etl_flowchart(ent_obj, layer=layer)
         flowchart_md = f"```mermaid\n{flowchart_code}\n```"
+        
+        pipeline = generate_medallion_pipeline(ent_obj, layer=layer)
+        p_py = pipeline.pyspark_code
+        p_sql = pipeline.sparksql_code
 
         pending_pipeline = {
             "product_name": table_name,
@@ -58,6 +64,8 @@ class ETLGenerationUseCase:
             "source_entity": entity_name,
             "entity_name": ent_obj.name,
             "flowchart": flowchart_code,
+            "pyspark": p_py,
+            "sparksql": p_sql,
             "status": "proposed",
         }
 
@@ -68,8 +76,8 @@ class ETLGenerationUseCase:
             saved_chk = chk_mgr.save_checkpoint(
                 thread_id=thread_id,
                 entity_name=entity_name,
-                pyspark_code="",
-                sparksql_code="",
+                pyspark_code=p_py,
+                sparksql_code=p_sql,
                 ci_status="PROPOSED",
                 metadata={"table_name": table_name, "layer": layer, "flowchart": flowchart_code},
             )
@@ -80,12 +88,15 @@ class ETLGenerationUseCase:
 
         confirmation_prompt = (
             "\n\n---\n"
-            "❓ **Deseja aprovar esta proposta de ETL e gerar o código PySpark/SQL com validação de CI e deploy?**\n"
-            "👉 *Digite **'sim'** ou **'confirmar'** para executar o ciclo de vida completo!*"
+            "❓ **Deseja aprovar esta proposta e fazer o deploy no Databricks?**\n"
+            "👉 *Digite **'sim'** ou **'confirmar'** para executar o deploy com CI!*"
         )
         response_text = (
             f"### 🎨 Proposta Visual de Pipeline ETL ({layer.upper()} Layer): {table_name}\n\n"
-            f"{flowchart_md}"
+            f"{flowchart_md}\n\n"
+            f"### 💻 Código Gerado para Revisão\n"
+            f"#### PySpark Pipeline\n```python\n{p_py}\n```\n\n"
+            f"#### SparkSQL DDL & Ingestion\n```sql\n{p_sql}\n```\n"
             f"{chk_msg}"
             f"{confirmation_prompt}"
         )
