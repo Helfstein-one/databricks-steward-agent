@@ -107,8 +107,9 @@ def deploy_and_materialize_data_product_local(
     inferred_cols: list[dict[str, Any]] = []
     try:
         preview = db_client.preview_table_data(table_name=table_name, limit=1)
+        col_types = preview.get("column_types", {})
         for c in preview.get("columns", []):
-            inferred_cols.append({"name": c, "type": "string"})
+            inferred_cols.append({"name": c, "type": col_types.get(c, "string")})
     except Exception as err:  # noqa: BLE001
         logger.debug("Preview inference notice: %s", err)
 

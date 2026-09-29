@@ -396,13 +396,13 @@ def _extract_pending_from_history(messages: list[Any]) -> dict[str, Any]:
             py_code = (
                 py_match.group(1).strip()
                 if py_match
-                else "def process(df):\n    return df.filter(df['status'] == 'COMPLETED')\n"
+                else ""
             )
             sql_match = re.search(r"```sql\n(.*?)\n```", content, re.DOTALL)
             sql_code = (
                 sql_match.group(1).strip()
                 if sql_match
-                else f"CREATE OR REPLACE TABLE workspace.default.{prod_name.replace('-', '_')} AS SELECT * FROM workspace.default.medallion_silver_transactions;"
+                else ""
             )
             return {
                 "product_name": prod_name,
@@ -413,8 +413,8 @@ def _extract_pending_from_history(messages: list[Any]) -> dict[str, Any]:
 
     return {
         "product_name": "medallion_gold_sales_summary",
-        "pyspark": "def process(df):\n    return df.filter(df['status'] == 'COMPLETED').dropDuplicates(['transaction_id'])\n",
-        "sparksql": "CREATE OR REPLACE TABLE workspace.default.medallion_gold_sales_summary AS SELECT date, category, SUM(amount) AS total_revenue, COUNT(*) AS total_orders FROM workspace.default.medallion_silver_transactions GROUP BY date, category;",
+        "pyspark": "",
+        "sparksql": "",
         "source_entity": "medallion_silver_transactions",
     }
 

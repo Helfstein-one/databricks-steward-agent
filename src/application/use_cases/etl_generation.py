@@ -44,6 +44,11 @@ class ETLGenerationUseCase:
             ent_obj = EntityModel(name=entity_name, table_name=entity_name)
 
         table_name = ent_obj.table_name or ent_obj.name
+        if layer == "gold" and "silver" in table_name:
+            table_name = table_name.replace("silver", "gold") + "_kpis"
+        elif layer == "silver" and "bronze" in table_name:
+            table_name = table_name.replace("bronze", "silver")
+
         flowchart_code = generate_etl_flowchart(ent_obj, layer=layer)
         flowchart_md = f"```mermaid\n{flowchart_code}\n```"
 
