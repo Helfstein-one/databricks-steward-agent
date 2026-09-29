@@ -95,7 +95,7 @@ class ETLGenerationUseCase:
             f"### 🎨 Proposta Visual de Pipeline ETL ({layer.upper()} Layer): {table_name}\n\n"
             f"{flowchart_md}\n\n"
             f"### 💻 Código Gerado para Revisão\n"
-            f"#### PySpark Pipeline\n```python\n{p_py}\n```\n\n"
+            
             f"#### SparkSQL DDL & Ingestion\n```sql\n{p_sql}\n```\n"
             f"{chk_msg}"
             f"{confirmation_prompt}"
