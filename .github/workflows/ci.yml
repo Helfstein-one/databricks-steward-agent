@@ -7,10 +7,9 @@ on:
     branches: [ main ]
 
 jobs:
-  ci:
-    name: Run Lint, Format & Test
+  lint:
+    name: Code Quality (Lint & Format)
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -24,15 +23,13 @@ jobs:
         uses: snok/install-poetry@v1
         with:
           version: 2.1.0
-          virtualenvs-create: true
-          virtualenvs-in-project: true
 
       - name: Load cached venv
         id: cached-poetry-dependencies
         uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/poetry.lock', '**/pyproject.toml') }}
+          key: venv-lint-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/poetry.lock', '**/pyproject.toml') }}
 
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
@@ -43,6 +40,39 @@ jobs:
 
       - name: Ruff check
         run: poetry run ruff check
+
+  test:
+    name: Unit Tests & Coverage
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 2.1.0
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-test-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock', '**/pyproject.toml') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --all-extras
 
       - name: Pytest with coverage
         env:
@@ -56,3 +86,23 @@ jobs:
           file: ./coverage.xml
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  build:
+    name: Docker Build Validation
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build databricks-steward-agent Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: databricks-steward-agent:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
