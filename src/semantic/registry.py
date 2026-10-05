@@ -31,12 +31,26 @@ class SemanticRegistry:
             self.load_directory(models_dir)
 
     def load_directory(self, path: Path | str) -> None:
-        """Load all YAML semantic models from a directory."""
+        """Load all YAML semantic models from a directory in ascending priority order."""
         dir_path = Path(path)
         if not dir_path.exists():
             return
 
-        for file_path in sorted(dir_path.glob("*.yaml")):
+        files_with_priority: list[tuple[int, str, Path]] = []
+        for file_path in dir_path.glob("*.yaml"):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                prio = data.get("priority", 100) if isinstance(data, dict) else 100
+                if not isinstance(prio, int):
+                    prio = 100
+            except Exception:
+                prio = 100
+            files_with_priority.append((prio, file_path.name, file_path))
+
+        files_with_priority.sort(key=lambda item: (item[0], item[1]))
+
+        for _, _, file_path in files_with_priority:
             self.load_file(file_path)
 
     def load_file(self, file_path: Path | str) -> SemanticDomainModel:
