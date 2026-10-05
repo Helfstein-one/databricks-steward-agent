@@ -226,7 +226,7 @@ class CIRunner:
                         if getattr(m, "sql", None):
                             for tok in re.findall(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b", m.sql):
                                 valid_columns.add(tok.lower())
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110  # noqa: BLE001
                 pass
 
         if not enforce_strict_check:

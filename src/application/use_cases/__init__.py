@@ -5,8 +5,8 @@ from src.application.use_cases.deployment_confirmation import DeploymentConfirma
 from src.application.use_cases.diagram_generation import DiagramGenerationUseCase
 from src.application.use_cases.error_correction import ErrorCorrectionUseCase
 from src.application.use_cases.etl_generation import ETLGenerationUseCase
-from src.application.use_cases.gitops_pr import GitOpsPRUseCase
 from src.application.use_cases.generative_ui import GenerativeUIUseCase
+from src.application.use_cases.gitops_pr import GitOpsPRUseCase
 from src.application.use_cases.json_builder import JsonBuilderUseCase
 from src.application.use_cases.others import (
     AnalyticsUseCase,
@@ -29,10 +29,10 @@ __all__ = [
     "ETLGenerationUseCase",
     "EntityModelingUseCase",
     "ErrorCorrectionUseCase",
-    "GitOpsPRUseCase",
     "GenerativeUIUseCase",
-    "JsonBuilderUseCase",
+    "GitOpsPRUseCase",
     "GreetingUseCase",
+    "JsonBuilderUseCase",
     "SemanticLayerUseCase",
     "TitleUseCase",
     "UnityCatalogUseCase",

@@ -1,10 +1,12 @@
-from typing import Any
 import json
+from typing import Any
+
 from langchain_core.messages import AIMessage
+
+from src.agent.checkpoint import get_checkpoint_manager
 from src.agent.state import AgentState
 from src.etl.generator import generate_medallion_pipeline
 from src.semantic.models import EntityModel
-from src.agent.checkpoint import get_checkpoint_manager
 
 
 class JsonBuilderUseCase:
@@ -56,7 +58,7 @@ class JsonBuilderUseCase:
                         "layer": layer,
                     },
                 }
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
 
         return {

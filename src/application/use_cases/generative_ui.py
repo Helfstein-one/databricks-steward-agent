@@ -1,6 +1,8 @@
-from typing import Any
 import base64
+from typing import Any
+
 from langchain_core.messages import AIMessage
+
 from src.agent.state import AgentState
 
 

@@ -5,10 +5,10 @@ from langchain_core.messages import AIMessage
 from src.agent.parsers import _extract_table_or_entity, _resolve_anaphoric_entity
 from src.agent.state import AgentState
 from src.config import settings
+from src.etl.generator import generate_medallion_pipeline
 from src.semantic.models import EntityModel
 from src.semantic.registry import SemanticRegistry
 from src.visualizer.mermaid import generate_etl_flowchart
-from src.etl.generator import generate_medallion_pipeline
 
 
 class ETLGenerationUseCase:
