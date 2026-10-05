@@ -36,7 +36,7 @@ class SemanticRegistry:
         if not dir_path.exists():
             return
 
-        for file_path in dir_path.glob("*.yaml"):
+        for file_path in sorted(dir_path.glob("*.yaml")):
             self.load_file(file_path)
 
     def load_file(self, file_path: Path | str) -> SemanticDomainModel:

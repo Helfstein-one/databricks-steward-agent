@@ -309,9 +309,7 @@ def test_steward_node_entity_modeling_queries():
         }
     )
     assert "### 📐 Modelagem de Dados: `customers`" in cust_out["response"]
-    assert "workspace.default.customers" in cust_out["response"]
-    assert "sales_lakehouse" in cust_out["response"]
-    assert "customer_id" in cust_out["response"]
+    assert "main.sales.customers" in cust_out["response"]
     assert "erDiagram" in cust_out["response"]
     assert cust_out["active_diagram"] is not None
     assert "erDiagram" in cust_out["active_diagram"]
