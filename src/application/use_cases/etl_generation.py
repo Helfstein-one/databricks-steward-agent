@@ -14,7 +14,13 @@ from src.etl.generator import generate_medallion_pipeline
 class ETLGenerationUseCase:
     def execute(self, state: AgentState) -> dict[str, Any]:
         messages = state.get("messages", [])
-        user_query = state.get("user_query") or (messages[-1].get("content", "") if messages and isinstance(messages[-1], dict) else getattr(messages[-1], "content", "") if messages else "")
+        user_query = state.get("user_query") or (
+            messages[-1].get("content", "")
+            if messages and isinstance(messages[-1], dict)
+            else getattr(messages[-1], "content", "")
+            if messages
+            else ""
+        )
         thread_id = state.get("thread_id", "default_thread")
 
         entity_name = _resolve_anaphoric_entity(user_query, messages, state)
@@ -50,10 +56,10 @@ class ETLGenerationUseCase:
         elif layer == "silver" and "bronze" in table_name:
             table_name = table_name.replace("bronze", "silver")
         ent_obj.table_name = table_name
-        
+
         flowchart_code = generate_etl_flowchart(ent_obj, layer=layer)
         flowchart_md = f"```mermaid\n{flowchart_code}\n```"
-        
+
         pipeline = generate_medallion_pipeline(ent_obj, layer=layer)
         p_py = pipeline.pyspark_code
         p_sql = pipeline.sparksql_code
@@ -72,6 +78,7 @@ class ETLGenerationUseCase:
         # Save checkpoint of the proposal
         try:
             from src.agent.checkpoint import get_checkpoint_manager
+
             chk_mgr = get_checkpoint_manager()
             saved_chk = chk_mgr.save_checkpoint(
                 thread_id=thread_id,
@@ -82,7 +89,9 @@ class ETLGenerationUseCase:
                 metadata={"table_name": table_name, "layer": layer, "flowchart": flowchart_code},
             )
             chk_id = saved_chk.get("checkpoint_id", "")
-            chk_msg = f"\n💾 **Proposta v1 salva no banco de histórico conversacional (`{chk_id}`)**"
+            chk_msg = (
+                f"\n💾 **Proposta v1 salva no banco de histórico conversacional (`{chk_id}`)**"
+            )
         except ImportError:
             chk_msg = ""
 
@@ -95,7 +104,6 @@ class ETLGenerationUseCase:
             f"### 🎨 Proposta Visual de Pipeline ETL ({layer.upper()} Layer): {table_name}\n\n"
             f"{flowchart_md}\n\n"
             f"### 💻 Código Gerado para Revisão\n"
-            
             f"#### SparkSQL DDL & Ingestion\n```sql\n{p_sql}\n```\n"
             f"{chk_msg}"
             f"{confirmation_prompt}"

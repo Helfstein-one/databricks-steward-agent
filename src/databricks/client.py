@@ -285,7 +285,12 @@ class DatabricksCEClient:
         schema_types: dict[str, str] = {}
         if raw_manifest and hasattr(raw_manifest, "schema") and raw_manifest.schema:
             schema_cols = [c.name for c in raw_manifest.schema.columns]
-            schema_types = {c.name: getattr(c.type_name, 'value', str(c.type_name)).lower() if hasattr(c, 'type_name') else "string" for c in raw_manifest.schema.columns}
+            schema_types = {
+                c.name: getattr(c.type_name, "value", str(c.type_name)).lower()
+                if hasattr(c, "type_name")
+                else "string"
+                for c in raw_manifest.schema.columns
+            }
         elif data_array:
             schema_cols = [f"col_{i + 1}" for i in range(len(data_array[0]))]
 

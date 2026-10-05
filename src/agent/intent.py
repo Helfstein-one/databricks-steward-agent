@@ -296,7 +296,16 @@ Output exactly one tag:""",
         res = chain.invoke({"query": q})
         content = str(getattr(res, "content", "") or "").strip().upper()
         # Clean up possible markdown or extra words
-        for tag in ["ANALYTICS", "PREVIEW", "SCHEMA", "DIAGRAM", "ETL", "CONFIRM", "GREETING", "OTHER"]:
+        for tag in [
+            "ANALYTICS",
+            "PREVIEW",
+            "SCHEMA",
+            "DIAGRAM",
+            "ETL",
+            "CONFIRM",
+            "GREETING",
+            "OTHER",
+        ]:
             if tag in content:
                 return tag
         return "OTHER"
@@ -393,17 +402,9 @@ def _extract_pending_from_history(messages: list[Any]) -> dict[str, Any]:
                 name_match.group(1).strip() if name_match else "medallion_gold_sales_summary"
             )
             py_match = re.search(r"```(?:python|py)\n(.*?)\n```", content, re.DOTALL)
-            py_code = (
-                py_match.group(1).strip()
-                if py_match
-                else ""
-            )
+            py_code = py_match.group(1).strip() if py_match else ""
             sql_match = re.search(r"```sql\n(.*?)\n```", content, re.DOTALL)
-            sql_code = (
-                sql_match.group(1).strip()
-                if sql_match
-                else ""
-            )
+            sql_code = sql_match.group(1).strip() if sql_match else ""
             return {
                 "product_name": prod_name,
                 "pyspark": py_code,

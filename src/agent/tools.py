@@ -733,9 +733,7 @@ def deploy_and_materialize_data_product_tool(
 
 
 @tool
-def list_etl_checkpoints_tool(
-    thread_id: str = "default", entity_name: str | None = None
-) -> str:
+def list_etl_checkpoints_tool(thread_id: str = "default", entity_name: str | None = None) -> str:
     """List all saved versioned ETL checkpoints for a conversation thread."""
     return list_etl_checkpoints(thread_id=thread_id, entity_name=entity_name)
 

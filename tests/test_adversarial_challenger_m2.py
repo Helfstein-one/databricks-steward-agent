@@ -264,8 +264,13 @@ def test_graph_routing_with_vs_without_anaphoric_reference() -> None:
     out_with = steward_node(state_with_anaphora)
     pending_with = out_with.get("pending_pipeline")
     assert pending_with is not None
-    assert "customers" in pending_with["product_name"] or "medallion" in pending_with["product_name"]
-    assert pending_with["source_entity"] == "workspace.default.customers" or "medallion" in pending_with["source_entity"]
+    assert (
+        "customers" in pending_with["product_name"] or "medallion" in pending_with["product_name"]
+    )
+    assert (
+        pending_with["source_entity"] == "workspace.default.customers"
+        or "medallion" in pending_with["source_entity"]
+    )
     assert "medallion" in out_with["response"] or "workspace" in out_with["response"]
 
     # Scenario B: WITHOUT anaphora

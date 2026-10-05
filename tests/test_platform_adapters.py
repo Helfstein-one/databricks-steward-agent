@@ -44,15 +44,15 @@ def test_databricks_adapter_deploy_job():
         return_value=expected,
     ) as mock_deploy:
         res = adapter.deploy_job("prod_a", "print('spark')", "SELECT 1")
-        mock_deploy.assert_called_once_with("prod_a", "print('spark')", "SELECT 1", source_entity=None)
+        mock_deploy.assert_called_once_with(
+            "prod_a", "print('spark')", "SELECT 1", source_entity=None
+        )
         assert res == expected
 
 
 def test_databricks_adapter_helper_functions():
     with patch("src.adapters.databricks_adapter._client_instance") as mock_client:
-        mock_client.execute_query.return_value = {
-            "result": MagicMock(data_array=[{"id": 1}])
-        }
+        mock_client.execute_query.return_value = {"result": MagicMock(data_array=[{"id": 1}])}
         res_exec = execute_query("SELECT 1")
         assert res_exec == [{"id": 1}]
 
@@ -66,9 +66,7 @@ def test_gitops_adapter_commit_and_push():
     expected = {"pr_url": "https://github.com/pr/1"}
     with patch("src.adapters.gitops_adapter.open_pull_request", return_value=expected) as mock_pr:
         res = adapter.commit_and_push("prod_a", "code_py", "code_sql", "ci_rep", "diagram_str")
-        mock_pr.assert_called_once_with(
-            "prod_a", "code_py", "code_sql", "ci_rep", "diagram_str"
-        )
+        mock_pr.assert_called_once_with("prod_a", "code_py", "code_sql", "ci_rep", "diagram_str")
         assert res == expected
 
 

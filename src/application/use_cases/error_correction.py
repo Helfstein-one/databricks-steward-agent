@@ -29,9 +29,7 @@ def _is_jules_delegation(query: str) -> bool:
     return any(k in q for k in jules_keywords)
 
 
-def _apply_heuristic_fix(
-    pyspark_code: str, sparksql_code: str, user_query: str
-) -> tuple[str, str]:
+def _apply_heuristic_fix(pyspark_code: str, sparksql_code: str, user_query: str) -> tuple[str, str]:
     """Apply direct code replacements based on common correction instructions."""
     py = pyspark_code or ""
     sql = sparksql_code or ""

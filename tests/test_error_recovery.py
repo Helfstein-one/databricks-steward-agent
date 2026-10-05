@@ -97,14 +97,14 @@ class TestErrorRecovery(unittest.TestCase):
 
         self.assertFalse(res.get("waiting_for_correction"))
         self.assertIsNone(res.get("error_recovery"))
-        self.assertIn("SELECT transaction_id, user_id, amount, status", res["generated_code"]["sparksql"])
+        self.assertIn(
+            "SELECT transaction_id, user_id, amount, status", res["generated_code"]["sparksql"]
+        )
         self.assertIn("Correção Aplicada com Sucesso", res["response"])
 
     def test_error_correction_use_case_delegation_to_jules(self) -> None:
         mock_jules_adapter = MagicMock()
-        mock_jules_adapter.ask_jules.return_value = (
-            "I analyzed the pipeline. Replace `SELECT *` with explicit column selection `SELECT id, amount`."
-        )
+        mock_jules_adapter.ask_jules.return_value = "I analyzed the pipeline. Replace `SELECT *` with explicit column selection `SELECT id, amount`."
         use_case = ErrorCorrectionUseCase(jules_adapter=mock_jules_adapter)
 
         state: AgentState = {

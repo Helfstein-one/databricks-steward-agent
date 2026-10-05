@@ -207,9 +207,9 @@ def test_pipe_3_turn_journey() -> None:
     }
     resp2 = pipe.pipe(body2)
     assert isinstance(resp2, str)
-    assert (
-        "Proposta Visual de Pipeline ETL" in resp2 or "flowchart LR" in resp2
-    ), f"Turn 2 failed: {resp2[:200]}"
+    assert "Proposta Visual de Pipeline ETL" in resp2 or "flowchart LR" in resp2, (
+        f"Turn 2 failed: {resp2[:200]}"
+    )
 
     # Turn 3: Confirmation
     body3 = {

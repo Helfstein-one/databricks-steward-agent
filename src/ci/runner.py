@@ -271,9 +271,7 @@ class CIRunner:
             clean_sql = strip_delta_maintenance(sparksql_code)
             as_aliases = {
                 a.lower()
-                for a in re.findall(
-                    r"\bAS\s+([a-zA-Z_][a-zA-Z0-9_]*)\b", clean_sql, re.IGNORECASE
-                )
+                for a in re.findall(r"\bAS\s+([a-zA-Z_][a-zA-Z0-9_]*)\b", clean_sql, re.IGNORECASE)
             }
 
             m = re.search(r"SELECT\s+(.*?)\s+FROM", clean_sql, re.IGNORECASE | re.DOTALL)

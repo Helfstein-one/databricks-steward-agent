@@ -20,7 +20,9 @@ class JulesMcpAdapter(IJulesMcpAdapter):
             from mcp.client.session import ClientSession
             from mcp.client.stdio import StdioServerParameters, stdio_client
         except ImportError:
-            return f"🤖 [Jules MCP Adapter] Simulating delegation to Jules for task: {prompt[:100]}..."
+            return (
+                f"🤖 [Jules MCP Adapter] Simulating delegation to Jules for task: {prompt[:100]}..."
+            )
 
         env = os.environ.copy()
 

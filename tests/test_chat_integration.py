@@ -22,6 +22,7 @@ from src.application.intent_router import (
 # 1. Tests for Semantic Intent Router (src/application/intent_router.py)
 # ============================================================================
 
+
 def test_intent_router_regex_pre_checks() -> None:
     """Test regex pre-checks for confirmation and data preview before calling LLM."""
     assert is_confirmation("sim, pode rodar o pipeline") is True
@@ -36,6 +37,7 @@ def test_intent_router_all_tags_with_mock_llm() -> None:
     tags = ["PREVIEW", "SCHEMA", "DIAGRAM", "ETL", "CONFIRM", "GREETING", "OTHER"]
 
     for tag in tags:
+
         def _fake_llm(messages: Any, t: str = tag) -> AIMessage:
             return AIMessage(content=f"  {t}\n")
 
@@ -69,6 +71,7 @@ def test_intent_router_regex_overrides() -> None:
 
 def test_intent_router_fallbacks() -> None:
     """Test fallback behavior on LLM exception, hallucinated tags, or unexpected JSON/formatting."""
+
     # 1. LLM raises Exception -> Fallback to OTHER
     def _error_llm(messages: Any) -> AIMessage:
         raise RuntimeError("LLM Connection Timeout")
@@ -98,6 +101,7 @@ def test_intent_router_fallbacks() -> None:
 # ============================================================================
 # 2. Dedicated Tests for open_webui_pipe.py
 # ============================================================================
+
 
 def test_open_webui_pipe_initialization_and_valves() -> None:
     """Test Pipe initialization, default Valves settings, and sync logic on valve changes."""
@@ -166,6 +170,7 @@ def test_open_webui_pipe_exception_handling() -> None:
 # 3. Tests for Conversational Synthesizer Wrapper (_synthesize_conversational_response)
 # ============================================================================
 
+
 def test_conversational_synthesizer_preserves_markdown_tables_code_and_diagrams() -> None:
     """Test that synthesizer wrapper preserves Markdown tables, PySpark/SQL code, and Mermaid diagrams."""
     raw_markdown = (
@@ -194,7 +199,10 @@ def test_conversational_synthesizer_preserves_markdown_tables_code_and_diagrams(
     mock_client.invoke.return_value = AIMessage(content=synthesized_content)
 
     clean_modules = {k: v for k, v in sys.modules.items() if k != "pytest"}
-    with patch.dict("sys.modules", clean_modules, clear=True), patch.dict("os.environ", {"PYTEST_CURRENT_TEST": ""}):
+    with (
+        patch.dict("sys.modules", clean_modules, clear=True),
+        patch.dict("os.environ", {"PYTEST_CURRENT_TEST": ""}),
+    ):
         res = _synthesize_conversational_response(
             det_result, mock_client, "desenhar modelo semântico"
         )
@@ -211,10 +219,7 @@ def test_conversational_synthesizer_preserves_markdown_tables_code_and_diagrams(
 
 def test_conversational_synthesizer_fallback_on_corrupted_output() -> None:
     """Test fallback to deterministic output when LLM strips code blocks or fails."""
-    raw_markdown = (
-        "### Pipeline Code\n\n"
-        "```python\ndef process(df):\n    return df\n```"
-    )
+    raw_markdown = "### Pipeline Code\n\n```python\ndef process(df):\n    return df\n```"
 
     det_result = {
         "messages": [AIMessage(content=raw_markdown)],
@@ -227,7 +232,10 @@ def test_conversational_synthesizer_fallback_on_corrupted_output() -> None:
     mock_client_corrupt.invoke.return_value = AIMessage(content=corrupted_content)
 
     clean_modules = {k: v for k, v in sys.modules.items() if k != "pytest"}
-    with patch.dict("sys.modules", clean_modules, clear=True), patch.dict("os.environ", {"PYTEST_CURRENT_TEST": ""}):
+    with (
+        patch.dict("sys.modules", clean_modules, clear=True),
+        patch.dict("os.environ", {"PYTEST_CURRENT_TEST": ""}),
+    ):
         res1 = _synthesize_conversational_response(
             det_result.copy(), mock_client_corrupt, "gerar etl"
         )
@@ -237,7 +245,10 @@ def test_conversational_synthesizer_fallback_on_corrupted_output() -> None:
     mock_client_error = MagicMock()
     mock_client_error.invoke.side_effect = RuntimeError("Synthesis Timeout")
 
-    with patch.dict("sys.modules", clean_modules, clear=True), patch.dict("os.environ", {"PYTEST_CURRENT_TEST": ""}):
+    with (
+        patch.dict("sys.modules", clean_modules, clear=True),
+        patch.dict("os.environ", {"PYTEST_CURRENT_TEST": ""}),
+    ):
         res2 = _synthesize_conversational_response(
             det_result.copy(), mock_client_error, "gerar etl"
         )

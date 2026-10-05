@@ -24,18 +24,24 @@ def test_analytics_use_case_parsing(sample_yaml_dir):
     registry = SemanticRegistry(models_dir=sample_yaml_dir)
 
     # 1. Total revenue query with date filter
-    ent, metrics, dims, filters = use_case._parse_nl_query("What was the total revenue yesterday?", registry)
+    ent, metrics, dims, filters = use_case._parse_nl_query(
+        "What was the total revenue yesterday?", registry
+    )
     assert len(metrics) > 0
     assert ent is not None
     assert any("date = date_sub(current_date(), 1)" in f for f in filters)
 
     # 2. Revenue grouped by category
-    ent, metrics, dims, filters = use_case._parse_nl_query("Qual o faturamento total por categoria?", registry)
+    ent, metrics, dims, filters = use_case._parse_nl_query(
+        "Qual o faturamento total por categoria?", registry
+    )
     assert len(metrics) > 0
     assert "category" in dims
 
     # 3. VIP customers query
-    ent, metrics, dims, filters = use_case._parse_nl_query("Qual o total de clientes VIP?", registry)
+    ent, metrics, dims, filters = use_case._parse_nl_query(
+        "Qual o total de clientes VIP?", registry
+    )
     assert len(metrics) > 0
 
 

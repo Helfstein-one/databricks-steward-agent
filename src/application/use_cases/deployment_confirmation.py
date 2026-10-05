@@ -57,7 +57,9 @@ class DeploymentConfirmationUseCase:
         )
 
         if res.get("status") != "success":
-            response_text = str(res.get("message") or res.get("error") or "❌ CI Quality Gate rejeitou o pipeline.")
+            response_text = str(
+                res.get("message") or res.get("error") or "❌ CI Quality Gate rejeitou o pipeline."
+            )
             ci_report = res.get("ci_report")
             active_diagram = state.get("active_diagram")
             waiting_for_correction = True
@@ -94,7 +96,6 @@ class DeploymentConfirmationUseCase:
             response_text = (
                 f"## 🚀 Ciclo de Vida do Data Product Concluído com Sucesso!\n\n"
                 f"### 💻 Código SparkSQL Implantado\n"
-                
                 f"#### SparkSQL DDL & Ingestion\n```sql\n{p_sql}\n```\n\n"
                 f"### 🛡️ 1. Esteira de CI Quality Gate\n"
                 f"{ci_rep.summary_markdown}\n\n"
