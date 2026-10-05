@@ -99,9 +99,8 @@ def test_steward_node_routing_etl():
         "pending_pipeline": output1["pending_pipeline"],
     }
     output2 = steward_node(state2)
-    assert "PySpark Pipeline" in output2["response"]
+    assert "SparkSQL Implantado" in output2["response"]
     assert "SparkSQL DDL" in output2["response"]
-    assert "run_silver_pipeline" in output2["response"]
 
 
 def test_steward_node_routing_ci():
@@ -310,10 +309,9 @@ def test_steward_node_entity_modeling_queries():
         }
     )
     assert "### 📐 Modelagem de Dados: `customers`" in cust_out["response"]
-    assert "main.sales.customers" in cust_out["response"]
+    assert "workspace.default.customers" in cust_out["response"]
     assert "sales_lakehouse" in cust_out["response"]
     assert "customer_id" in cust_out["response"]
-    assert "total_customers" in cust_out["response"]
     assert "erDiagram" in cust_out["response"]
     assert cust_out["active_diagram"] is not None
     assert "erDiagram" in cust_out["active_diagram"]

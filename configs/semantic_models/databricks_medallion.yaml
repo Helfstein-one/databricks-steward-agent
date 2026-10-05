@@ -339,7 +339,7 @@ entities:
     type: many_to_one
 - name: medallion_gold_sales_summary
   table: workspace.default.medallion_gold_sales_summary
-  primary_key: date
+  primary_key: transaction_id
   layer: gold
   description: Data Product medallion_gold_sales_summary gerado e materializado no
     Databricks Unity Catalog.
@@ -347,33 +347,133 @@ entities:
   - medallion_gold_sales_summary
   - medallion gold sales summary
   dimensions:
-  - name: date
+  - name: Silver
     type: string
-    column: date
-    description: Coluna date do data product medallion_gold_sales_summary
+    column: Silver
+    description: Coluna Silver do data product medallion_gold_sales_summary
+  - name: ayer
+    type: string
+    column: ayer
+    description: Coluna ayer do data product medallion_gold_sales_summary
+  - name: medallion_silver_transactions
+    type: string
+    column: medallion_silver_transactions
+    description: Coluna medallion_silver_transactions do data product medallion_gold_sales_summary
+  - name: transaction_id
+    type: string
+    column: transaction_id
+    description: Coluna transaction_id do data product medallion_gold_sales_summary
+  - name: user_id
+    type: string
+    column: user_id
+    description: Coluna user_id do data product medallion_gold_sales_summary
+  - name: amount
+    type: double
+    column: amount
+    description: Coluna amount do data product medallion_gold_sales_summary
+  - name: status
+    type: string
+    column: status
+    description: Coluna status do data product medallion_gold_sales_summary
   - name: category
     type: string
     column: category
     description: Coluna category do data product medallion_gold_sales_summary
-  - name: total_revenue
+  - name: date
+    type: date
+    column: date
+    description: Coluna date do data product medallion_gold_sales_summary
+  - name: timestamp
+    type: timestamp
+    column: timestamp
+    description: Coluna timestamp do data product medallion_gold_sales_summary
+  - name: created_at
     type: string
-    column: total_revenue
-    description: Coluna total_revenue do data product medallion_gold_sales_summary
-  - name: total_orders
+    column: created_at
+    description: Coluna created_at do data product medallion_gold_sales_summary
+  - name: _ingested_at
+    type: timestamp
+    column: _ingested_at
+    description: Coluna _ingested_at do data product medallion_gold_sales_summary
+  - name: _silver_processed_at
+    type: timestamp
+    column: _silver_processed_at
+    description: Coluna _silver_processed_at do data product medallion_gold_sales_summary
+  - name: USING
     type: string
-    column: total_orders
-    description: Coluna total_orders do data product medallion_gold_sales_summary
+    column: USING
+    description: Coluna USING do data product medallion_gold_sales_summary
+  - name: MERGE
+    type: bigint
+    column: MERGE
+    description: Coluna MERGE do data product medallion_gold_sales_summary
+  - name: medallion_silver_transactions
+    type: string
+    column: medallion_silver_transactions
+    description: Coluna medallion_silver_transactions do data product medallion_gold_sales_summary
+  - name: target
+    type: string
+    column: target
+    description: Coluna target do data product medallion_gold_sales_summary
+  - name: bronze_medallion_silver_transactions
+    type: string
+    column: bronze_medallion_silver_transactions
+    description: Coluna bronze_medallion_silver_transactions do data product medallion_gold_sales_summary
+  - name: source
+    type: string
+    column: source
+    description: Coluna source do data product medallion_gold_sales_summary
+  - name: transaction_id
+    type: string
+    column: transaction_id
+    description: Coluna transaction_id do data product medallion_gold_sales_summary
+  - name: MATCHED
+    type: string
+    column: MATCHED
+    description: Coluna MATCHED do data product medallion_gold_sales_summary
+  - name: UPDATE
+    type: string
+    column: UPDATE
+    description: Coluna UPDATE do data product medallion_gold_sales_summary
+  - name: _silver_processed_at
+    type: string
+    column: _silver_processed_at
+    description: Coluna _silver_processed_at do data product medallion_gold_sales_summary
+  - name: THEN
+    type: string
+    column: THEN
+    description: Coluna THEN do data product medallion_gold_sales_summary
+  - name: medallion_silver_transactions
+    type: string
+    column: medallion_silver_transactions
+    description: Coluna medallion_silver_transactions do data product medallion_gold_sales_summary
   metrics:
   - name: total_medallion_gold_sales_summary_records
     type: count
     sql: COUNT(*)
     description: Contagem total de registros em medallion_gold_sales_summary
+  - name: total_amount
+    type: sum
+    sql: SUM(amount)
+    description: Soma agregada de amount
+  - name: avg_amount
+    type: avg
+    sql: AVG(amount)
+    description: Média de amount
+  - name: total_MERGE
+    type: sum
+    sql: SUM(MERGE)
+    description: Soma agregada de MERGE
+  - name: avg_MERGE
+    type: avg
+    sql: AVG(MERGE)
+    description: Média de MERGE
   relationships:
   - name: medallion_silver_transactions_to_medallion_gold_sales_summary
     from_entity: medallion_silver_transactions
-    from_column: date
+    from_column: transaction_id
     to_entity: medallion_gold_sales_summary
-    to_column: date
+    to_column: transaction_id
     type: many_to_one
 - name: brasa
   table: workspace.default.brasa
@@ -574,13 +674,6 @@ entities:
     type: avg
     sql: AVG(MERGE)
     description: Média de MERGE
-  relationships:
-  - name: medallion_silver_transactions_to_workspace_default_medallion_silver_transactions
-    from_entity: medallion_silver_transactions
-    from_column: transaction_id
-    to_entity: workspace_default_medallion_silver_transactions
-    to_column: transaction_id
-    type: many_to_one
 relationships:
 - from_entity: medallion_bronze_transactions
   to_entity: medallion_silver_transactions
