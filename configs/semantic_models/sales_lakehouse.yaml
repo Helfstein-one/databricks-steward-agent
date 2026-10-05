@@ -1,4 +1,5 @@
 domain: sales_lakehouse
+priority: 100
 description: E-Commerce & Retail Sales Lakehouse Semantic Model
 catalog: main
 schema_name: sales

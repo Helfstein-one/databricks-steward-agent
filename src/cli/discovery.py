@@ -272,6 +272,7 @@ def run_discovery_crawler(
     domain_name = f"auto_discovered_{sch}" if sch else "auto_discovered_catalog"
     domain_model = SemanticDomainModel(
         domain=domain_name,
+        priority=10,
         description=f"Auto-discovered semantic model for catalog `{cat}` and schema `{sch}`.",
         catalog=cat,
         schema_name=sch,
