@@ -1,0 +1,292 @@
+domain: auto_discovered_default
+description: Auto-discovered semantic model for catalog `default` and schema `default`.
+catalog: default
+schema_name: default
+entities:
+- name: bronze_raw_transactions
+  table_name: default.default.bronze_raw_transactions
+  catalog: default
+  schema_name: default
+  primary_key: transaction_id
+  dimensions:
+  - name: transaction_id
+    type: string
+    column: transaction_id
+    description: Dimension attribute transaction_id of bronze_raw_transactions
+    synonyms:
+    - transaction id
+  - name: user_id
+    type: string
+    column: user_id
+    description: Dimension attribute user_id of bronze_raw_transactions
+    synonyms:
+    - user id
+  - name: amount
+    type: double
+    column: amount
+    description: Dimension attribute amount of bronze_raw_transactions
+    synonyms:
+    - amount
+  - name: status
+    type: string
+    column: status
+    description: Dimension attribute status of bronze_raw_transactions
+    synonyms:
+    - status
+  - name: raw_payload
+    type: string
+    column: raw_payload
+    description: Dimension attribute raw_payload of bronze_raw_transactions
+    synonyms:
+    - raw payload
+  - name: _ingested_at
+    type: timestamp
+    column: _ingested_at
+    description: Dimension attribute _ingested_at of bronze_raw_transactions
+    synonyms:
+    - ' ingested at'
+  metrics:
+  - name: total_bronze_raw_transactions_count
+    entity: bronze_raw_transactions
+    type: count
+    sql: COUNT(DISTINCT transaction_id)
+    description: Total count of unique transaction_id records in bronze_raw_transactions
+    synonyms:
+    - total_bronze_raw_transactions
+  - name: sum_amount
+    entity: bronze_raw_transactions
+    type: sum
+    sql: SUM(amount)
+    description: Total sum of amount in bronze_raw_transactions
+    synonyms:
+    - total_amount
+  - name: avg_amount
+    entity: bronze_raw_transactions
+    type: avg
+    sql: AVG(amount)
+    description: Average amount in bronze_raw_transactions
+    synonyms:
+    - average_amount
+  synonyms:
+  - bronze_raw_transactions
+  - bronze raw transactions
+  description: Bronze layer raw ingestion transactions table with payload audit metadata
+  columns:
+  - name: transaction_id
+    type: string
+    nullable: false
+    primary_key: true
+  - name: user_id
+    type: string
+    nullable: false
+  - name: amount
+    type: double
+    nullable: false
+  - name: status
+    type: string
+    nullable: false
+  - name: raw_payload
+    type: string
+    nullable: true
+  - name: _ingested_at
+    type: timestamp
+    nullable: false
+  layer: bronze
+- name: silver_transactions
+  table_name: default.default.silver_transactions
+  catalog: default
+  schema_name: default
+  primary_key: transaction_id
+  dimensions:
+  - name: transaction_id
+    type: string
+    column: transaction_id
+    description: Dimension attribute transaction_id of silver_transactions
+    synonyms:
+    - transaction id
+  - name: user_id
+    type: string
+    column: user_id
+    description: Dimension attribute user_id of silver_transactions
+    synonyms:
+    - user id
+  - name: amount
+    type: double
+    column: amount
+    description: Dimension attribute amount of silver_transactions
+    synonyms:
+    - amount
+  - name: status
+    type: string
+    column: status
+    description: Dimension attribute status of silver_transactions
+    synonyms:
+    - status
+  - name: transaction_date
+    type: date
+    column: transaction_date
+    description: Dimension attribute transaction_date of silver_transactions
+    synonyms:
+    - transaction date
+  - name: is_valid
+    type: boolean
+    column: is_valid
+    description: Dimension attribute is_valid of silver_transactions
+    synonyms:
+    - is valid
+  metrics:
+  - name: total_silver_transactions_count
+    entity: silver_transactions
+    type: count
+    sql: COUNT(DISTINCT transaction_id)
+    description: Total count of unique transaction_id records in silver_transactions
+    synonyms:
+    - total_silver_transactions
+  - name: sum_amount
+    entity: silver_transactions
+    type: sum
+    sql: SUM(amount)
+    description: Total sum of amount in silver_transactions
+    synonyms:
+    - total_amount
+  - name: avg_amount
+    entity: silver_transactions
+    type: avg
+    sql: AVG(amount)
+    description: Average amount in silver_transactions
+    synonyms:
+    - average_amount
+  synonyms:
+  - silver_transactions
+  - silver transactions
+  description: Silver layer cleansed and deduplicated transactions with validated
+    typing
+  columns:
+  - name: transaction_id
+    type: string
+    nullable: false
+    primary_key: true
+  - name: user_id
+    type: string
+    nullable: false
+  - name: amount
+    type: double
+    nullable: false
+  - name: status
+    type: string
+    nullable: false
+  - name: transaction_date
+    type: date
+    nullable: false
+  - name: is_valid
+    type: boolean
+    nullable: false
+  layer: silver
+- name: gold_sales_kpis
+  table_name: default.default.gold_sales_kpis
+  catalog: default
+  schema_name: default
+  primary_key: metric_date
+  dimensions:
+  - name: metric_date
+    type: date
+    column: metric_date
+    description: Dimension attribute metric_date of gold_sales_kpis
+    synonyms:
+    - metric date
+  - name: status
+    type: string
+    column: status
+    description: Dimension attribute status of gold_sales_kpis
+    synonyms:
+    - status
+  - name: total_amount
+    type: double
+    column: total_amount
+    description: Dimension attribute total_amount of gold_sales_kpis
+    synonyms:
+    - total amount
+  - name: transaction_count
+    type: bigint
+    column: transaction_count
+    description: Dimension attribute transaction_count of gold_sales_kpis
+    synonyms:
+    - transaction count
+  - name: avg_amount
+    type: double
+    column: avg_amount
+    description: Dimension attribute avg_amount of gold_sales_kpis
+    synonyms:
+    - avg amount
+  metrics:
+  - name: total_gold_sales_kpis_count
+    entity: gold_sales_kpis
+    type: count
+    sql: COUNT(DISTINCT metric_date)
+    description: Total count of unique metric_date records in gold_sales_kpis
+    synonyms:
+    - total_gold_sales_kpis
+  - name: sum_total_amount
+    entity: gold_sales_kpis
+    type: sum
+    sql: SUM(total_amount)
+    description: Total sum of total_amount in gold_sales_kpis
+    synonyms:
+    - total_total_amount
+  - name: avg_total_amount
+    entity: gold_sales_kpis
+    type: avg
+    sql: AVG(total_amount)
+    description: Average total_amount in gold_sales_kpis
+    synonyms:
+    - average_total_amount
+  - name: sum_transaction_count
+    entity: gold_sales_kpis
+    type: sum
+    sql: SUM(transaction_count)
+    description: Total sum of transaction_count in gold_sales_kpis
+    synonyms:
+    - total_transaction_count
+  - name: avg_transaction_count
+    entity: gold_sales_kpis
+    type: avg
+    sql: AVG(transaction_count)
+    description: Average transaction_count in gold_sales_kpis
+    synonyms:
+    - average_transaction_count
+  - name: sum_avg_amount
+    entity: gold_sales_kpis
+    type: sum
+    sql: SUM(avg_amount)
+    description: Total sum of avg_amount in gold_sales_kpis
+    synonyms:
+    - total_avg_amount
+  - name: avg_avg_amount
+    entity: gold_sales_kpis
+    type: avg
+    sql: AVG(avg_amount)
+    description: Average avg_amount in gold_sales_kpis
+    synonyms:
+    - average_avg_amount
+  synonyms:
+  - gold_sales_kpis
+  - gold sales kpis
+  description: Gold layer analytical sales KPIs aggregated daily
+  columns:
+  - name: metric_date
+    type: date
+    nullable: false
+    primary_key: true
+  - name: status
+    type: string
+    nullable: false
+  - name: total_amount
+    type: double
+    nullable: false
+  - name: transaction_count
+    type: bigint
+    nullable: false
+  - name: avg_amount
+    type: double
+    nullable: false
+  layer: gold
