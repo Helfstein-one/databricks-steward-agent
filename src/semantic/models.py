@@ -128,6 +128,7 @@ class SemanticDomainModel(BaseModel):
     """Domain model grouping entities, metrics, and relationships."""
 
     domain: str
+    priority: int = 100
     description: str | None = None
     catalog: str | None = None
     schema_name: str | None = None

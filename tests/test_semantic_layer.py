@@ -168,6 +168,94 @@ def test_registry_prompt_context_generation(sample_yaml_dir):
     assert "Relationships (Joins):" in context
 
 
+def test_registry_priority_based_loading(tmp_path):
+    """Verify directory loading respects priority: lower priorities loaded first, higher priorities override."""
+    # Create low priority file (e.g. priority 10) that defines entity 'user' with table 'low_table'
+    file_low = tmp_path / "b_auto_discovered.yaml"
+    file_low.write_text(
+        "domain: test_domain\n"
+        "priority: 10\n"
+        "entities:\n"
+        "  - name: user\n"
+        "    table: low_table\n",
+        encoding="utf-8",
+    )
+
+    # Create high priority file (e.g. priority 100) that defines entity 'user' with table 'high_table'
+    file_high = tmp_path / "a_curated.yaml"
+    file_high.write_text(
+        "domain: test_domain\n"
+        "priority: 100\n"
+        "entities:\n"
+        "  - name: user\n"
+        "    table: high_table\n",
+        encoding="utf-8",
+    )
+
+    registry = SemanticRegistry(models_dir=tmp_path)
+    entity = registry.get_entity("user")
+    assert entity is not None
+    # 'a_curated.yaml' (prio 100) should be loaded after 'b_auto_discovered.yaml' (prio 10), overriding 'low_table'
+    assert entity.table_name == "high_table"
+
+
+def test_registry_priority_tie_breaking(tmp_path):
+    """Verify filename tie-breaking when priority values are equal."""
+    file_a = tmp_path / "a_model.yaml"
+    file_a.write_text(
+        "domain: test_domain\n"
+        "priority: 50\n"
+        "entities:\n"
+        "  - name: user\n"
+        "    table: table_a\n",
+        encoding="utf-8",
+    )
+
+    file_b = tmp_path / "b_model.yaml"
+    file_b.write_text(
+        "domain: test_domain\n"
+        "priority: 50\n"
+        "entities:\n"
+        "  - name: user\n"
+        "    table: table_b\n",
+        encoding="utf-8",
+    )
+
+    registry = SemanticRegistry(models_dir=tmp_path)
+    entity = registry.get_entity("user")
+    assert entity is not None
+    # Equal priority: sorted by filename ('a_model.yaml' then 'b_model.yaml'), so b_model overrides a_model
+    assert entity.table_name == "table_b"
+
+
+def test_registry_default_priority_fallback(tmp_path):
+    """Verify missing priority in YAML defaults to 100."""
+    file_no_prio = tmp_path / "b_no_prio.yaml"
+    file_no_prio.write_text(
+        "domain: test_domain\n"
+        "entities:\n"
+        "  - name: user\n"
+        "    table: default_table\n",
+        encoding="utf-8",
+    )
+
+    file_prio_10 = tmp_path / "a_prio_10.yaml"
+    file_prio_10.write_text(
+        "domain: test_domain\n"
+        "priority: 10\n"
+        "entities:\n"
+        "  - name: user\n"
+        "    table: low_prio_table\n",
+        encoding="utf-8",
+    )
+
+    registry = SemanticRegistry(models_dir=tmp_path)
+    entity = registry.get_entity("user")
+    assert entity is not None
+    # missing priority defaults to 100, loaded after prio 10 file
+    assert entity.table_name == "default_table"
+
+
 def test_registry_nonexistent_directory():
     """Verify non-existent directory does not crash the registry."""
     registry = SemanticRegistry(models_dir="/path/that/does/not/exist/at/all")

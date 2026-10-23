@@ -1,4 +1,5 @@
 domain: databricks_medallion
+priority: 100
 description: Arquitetura Medalhão Databricks Lakehouse (Bronze -> Silver -> Gold)
   com Transações, KPIs de Vendas e Métricas de Clientes VIP
 catalog: workspace

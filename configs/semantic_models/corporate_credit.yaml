@@ -1,4 +1,5 @@
 domain: corporate_credit
+priority: 100
 description: Wholesale Banking & Corporate Credit Portfolio Semantic Model
 catalog: main
 schema_name: corporate_credit
