@@ -22,6 +22,8 @@ def test_default_settings():
 def test_settings_env_override(monkeypatch):
     """Verify that environment variables properly override defaults."""
     monkeypatch.setenv("DATABRICKS_HOST", "https://custom.cloud.databricks.com")
+    monkeypatch.setenv("DATABRICKS_CLIENT_ID", "custom-client-id")
+    monkeypatch.setenv("DATABRICKS_CLIENT_SECRET", "custom-client-secret")
     monkeypatch.setenv("DATABRICKS_TOKEN", "dapi-custom-token")
     monkeypatch.setenv("DATABRICKS_WAREHOUSE_ID", "custom-warehouse-id")
     monkeypatch.setenv("DATABRICKS_DEFAULT_CATALOG", "analytics_catalog")

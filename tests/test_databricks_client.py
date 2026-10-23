@@ -13,7 +13,7 @@ from src.databricks.introspector import introspect_catalog
 
 def test_client_unconfigured():
     """Verify unconfigured client reports is_configured as False."""
-    client = DatabricksCEClient(host="", token="")
+    client = DatabricksCEClient(host="", token="", client_id="", client_secret="")
     assert client.is_configured() is False
 
     with pytest.raises(DatabricksConnectionError):
@@ -21,6 +21,47 @@ def test_client_unconfigured():
 
     with pytest.raises(DatabricksConnectionError):
         client.mkdirs("/Workspace/test")
+
+
+@patch("src.databricks.client.WorkspaceClient")
+def test_client_configured_oauth_m2m(mock_wc_class):
+    """Verify client prioritizes OAuth M2M credentials when provided."""
+    mock_instance = MagicMock()
+    mock_wc_class.return_value = mock_instance
+
+    client = DatabricksCEClient(
+        host="https://adb-123456.azuredatabricks.net",
+        client_id="sp-client-id-123",
+        client_secret="sp-client-secret-456",
+    )
+
+    assert client.is_configured() is True
+    mock_wc_class.assert_called_once_with(
+        host="https://adb-123456.azuredatabricks.net",
+        client_id="sp-client-id-123",
+        client_secret="sp-client-secret-456",
+    )
+
+
+@patch("src.databricks.client.WorkspaceClient")
+def test_client_explicit_pat_parameter_ignores_settings_oauth(mock_wc_class, monkeypatch):
+    """Verify explicitly passing token uses PAT auth even if settings contain client_id/secret."""
+    monkeypatch.setenv("DATABRICKS_CLIENT_ID", "env-sp-client-id")
+    monkeypatch.setenv("DATABRICKS_CLIENT_SECRET", "env-sp-client-secret")
+
+    mock_instance = MagicMock()
+    mock_wc_class.return_value = mock_instance
+
+    client = DatabricksCEClient(
+        host="https://adb-123456.azuredatabricks.net",
+        token="explicit-pat-token",
+    )
+
+    assert client.is_configured() is True
+    mock_wc_class.assert_called_once_with(
+        host="https://adb-123456.azuredatabricks.net",
+        token="explicit-pat-token",
+    )
 
 
 @patch("src.databricks.client.WorkspaceClient")

@@ -14,6 +14,12 @@ class Settings(BaseModel):
     # Databricks
     databricks_host: str = Field(default_factory=lambda: os.getenv("DATABRICKS_HOST", ""))
     databricks_token: str = Field(default_factory=lambda: os.getenv("DATABRICKS_TOKEN", ""))
+    databricks_client_id: str = Field(
+        default_factory=lambda: os.getenv("DATABRICKS_CLIENT_ID", "")
+    )
+    databricks_client_secret: str = Field(
+        default_factory=lambda: os.getenv("DATABRICKS_CLIENT_SECRET", "")
+    )
     databricks_warehouse_id: str = Field(
         default_factory=lambda: os.getenv("DATABRICKS_WAREHOUSE_ID", "")
     )

@@ -33,12 +33,29 @@ class DatabricksCEClient:
         self,
         host: str | None = None,
         token: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
         warehouse_id: str | None = None,
         timeout: int = 60,
     ):
         raw_host = host if host is not None else (settings.databricks_host or "")
         self.host = raw_host.split("?")[0].rstrip("/")
-        self.token = token if token is not None else settings.databricks_token
+
+        if token is not None and client_id is None and client_secret is None:
+            self.token = token
+            self.client_id = ""
+            self.client_secret = ""
+        elif (client_id is not None or client_secret is not None) and token is None:
+            self.token = ""
+            self.client_id = client_id or ""
+            self.client_secret = client_secret or ""
+        else:
+            self.token = token if token is not None else settings.databricks_token
+            self.client_id = client_id if client_id is not None else settings.databricks_client_id
+            self.client_secret = (
+                client_secret if client_secret is not None else settings.databricks_client_secret
+            )
+
         self.warehouse_id = (
             warehouse_id if warehouse_id is not None else settings.databricks_warehouse_id
         )
@@ -46,7 +63,17 @@ class DatabricksCEClient:
         self.client: WorkspaceClient | None = None
         self._init_error: str | None = None
 
-        if self.host and self.token:
+        if self.host and self.client_id and self.client_secret:
+            try:
+                self.client = WorkspaceClient(
+                    host=self.host,
+                    client_id=self.client_id,
+                    client_secret=self.client_secret,
+                )
+            except Exception as e:  # noqa: BLE001
+                self.client = None
+                self._init_error = str(e)
+        elif self.host and self.token:
             try:
                 self.client = WorkspaceClient(
                     host=self.host,
@@ -56,11 +83,16 @@ class DatabricksCEClient:
                 self.client = None
                 self._init_error = str(e)
         else:
-            self._init_error = "Databricks host or token is not configured."
+            self._init_error = (
+                "Databricks credentials not configured (requires host and either "
+                "client_id + client_secret for OAuth M2M or token for PAT)."
+            )
 
     def is_configured(self) -> bool:
         """Return True if client has credentials configured."""
-        return self.client is not None and bool(self.host and self.token)
+        has_oauth = bool(self.client_id and self.client_secret)
+        has_pat = bool(self.token)
+        return self.client is not None and bool(self.host and (has_oauth or has_pat))
 
     def verify_connection(self) -> dict[str, Any]:
         """Verify connection to Databricks workspace."""

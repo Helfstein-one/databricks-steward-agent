@@ -16,6 +16,8 @@ if str(PROJECT_ROOT) not in sys.path:
 def mock_env(monkeypatch):
     """Provides a controlled environment variables setup."""
     monkeypatch.setenv("DATABRICKS_HOST", "https://test-workspace.cloud.databricks.com")
+    monkeypatch.setenv("DATABRICKS_CLIENT_ID", "test-sp-client-id")
+    monkeypatch.setenv("DATABRICKS_CLIENT_SECRET", "test-sp-client-secret")
     monkeypatch.setenv("DATABRICKS_TOKEN", "dapi-test-token-12345")
     monkeypatch.setenv("DATABRICKS_WAREHOUSE_ID", "warehouse-sql-test-123")
     monkeypatch.setenv("DATABRICKS_DEFAULT_CATALOG", "main")
