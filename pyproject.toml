@@ -41,5 +41,9 @@ templater = "raw"
 max_line_length = 100
 exclude_rules = "references.keywords"
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
 [tool.poetry]
 package-mode = false
